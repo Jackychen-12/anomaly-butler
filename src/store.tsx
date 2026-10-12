@@ -152,7 +152,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(saved)) } catch { /* 存不了就只在本次生效 */ } }, [saved])
   useEffect(() => {
-    const onHash = () => { setPageState(pageFromHash()); if (pageFromHash() === 'me') setMeTab(meTabFromHash()) }
+    const onHash = () => {
+      const p = pageFromHash(), arg = hashArg()
+      setPageState(p)
+      if (p === 'me') setMeTab(meTabFromHash())
+      if (p === 'watch' && arg && STOCKS.some((x) => x.code === arg)) setCode(arg)
+      if (p === 'review' && arg) setReviewId(arg)
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])

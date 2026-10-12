@@ -1,12 +1,12 @@
 /** 自选页（按股票看：发生了什么、我的仓位怎么办；表态和对答案在判断页）：左边的行情列表按今天的重要程度分组（重要、留意、轻微、平静），异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { MARKET_LABEL, STOCKS, type Market, type Stock } from '../data/case'
-import { anomaliesOf, fmtDate, isFresh, judgmentsOf, type Level, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
-import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
-import { AnomalyBody, GradeBox, PriceChart } from '../parts'
+import { anomaliesOf, fmtDate, isFresh, judgmentsOf, type Level, lastBar, type Anomaly, type Grade, type Judgment } from '../engine'
+import { cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
+import { AnomalyBody, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
-import { Planner } from '../planner'
+import { StockChat } from '../stockchat'
 import { scopeOf, signalOf } from '../data/signals'
 import { useStore } from '../store'
 
@@ -117,8 +117,7 @@ const KIND_LABEL: Record<string, string> = { 宏观政策: '政策', 跨市场�
 const dayOf = (a: Anomaly) => a.when.match(/^\d+月\d+日/)?.[0] ?? fmtDate(a.tick ?? a.after!)
 
 function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
-  const { tick, prevTick, weightOf, hasHoldings, openMe, openReview, gradeOf } = useStore()
-  const w = weightOf(code)
+  const { tick, prevTick, gradeOf } = useStore()
   const s = STOCKS.find((x) => x.code === code)!
   const bar = lastBar(code, tick)
   const anomalies = anomaliesOf(code, tick)
@@ -129,25 +128,21 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
   const [all, setAll] = useState(false)
   // 默认展开最新的一条；换股票后重新选
   useEffect(() => { setOpenId(null); setFolded(false); setScope('all'); setAll(false) }, [code])
-  const open = anomalies.find((a) => a.id === openId) ?? anomalies[0]
-  // 选中的这条异动里，管家针对这只股票的判断（可能没有：判断落在别的股票上，或者这条异动不出判断）
-  const focus = judgments.find((j) => j.anomaly.id === open?.id)
-  const elsewhere = open ? open.judgments.filter((d) => d.code !== code).map((d) => stockOf(d.code).name) : []
   // 列表：新出现的放最上面（按重要程度排），之前的按日期分组，只先列最近三天
   const shown = anomalies.filter((a) => scope === 'all' || scopeOf(a.signal) === scope)
   const fresh = shown.filter((a) => isFresh(a, tick, prevTick)).sort((x, y) => gradeOf(y, code).score - gradeOf(x, code).score)
   const byDay = new Map<string, Anomaly[]>()
   for (const a of shown) if (!fresh.includes(a)) { const k = dayOf(a); byDay.set(k, [...(byDay.get(k) ?? []), a]) }
   const days = [...byDay.entries()].map(([label, items]) => ({ label, items, fresh: false }))
-  const groups = [...(fresh.length ? [{ label: '今天开盘前要看的', items: fresh, fresh: true }] : []), ...(all ? days : days.slice(0, 3))]
-  const hidden = all ? 0 : days.slice(3).reduce((n, d) => n + d.items.length, 0)
-  // 持有这只股票时，直接在这里列出调仓做法：优先用选中异动的判断，其次是在等结果的、已经到价的
-  const actionable = (j: Judgment) => j.status === 'pending' || j.status === 'hit'
-  const plan = w ? [focus, ...judgments].find((j): j is Judgment => !!j && actionable(j)) : undefined
+  const groups = [...(fresh.length ? [{ label: '今天开盘前要看的', items: fresh, fresh: true }] : []), ...(all ? days : fresh.length ? [] : days.slice(0, 1))]
+  const hidden = all ? 0 : days.slice(fresh.length ? 0 : 1).reduce((n, d) => n + d.items.length, 0)
+  // 默认展开今天最要紧的那条
+  const open = anomalies.find((a) => a.id === openId) ?? fresh[0] ?? anomalies[0]
+  const focus = judgments.find((j) => j.anomaly.id === open?.id)
   const freshHigh = anomalies.filter((a) => isFresh(a, tick, prevTick)).length
 
   return (
-    <div className="grid min-h-full grid-cols-[minmax(0,1fr)] gap-0 @min-[860px]:grid-cols-[minmax(0,1fr)_348px]">
+    <div className="grid min-h-full grid-cols-[minmax(0,1fr)] gap-0 @min-[860px]:grid-cols-[minmax(0,1fr)_372px]">
       <section className="min-w-0 px-4 py-4 lg:px-6 lg:py-5">
         {onBack ? <button type="button" onClick={onBack} className="-ml-1 mb-2 flex h-8 items-center gap-1 rounded-sm px-1 text-[13px] text-slate hover:bg-hover"><ArrowLeft className="h-4 w-4" />自选</button> : null}
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -201,57 +196,18 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
                       {a.judgments.some((d) => d.code === code) ? <Tag tone="purple">有判断</Tag> : null}
                       <ChevronDown aria-hidden="true" className={cn('h-4 w-4 shrink-0 text-stone transition-transform', isOpen && 'rotate-180')} />
                     </button>
-                    {isOpen ? <div className="border-t border-hairline-soft bg-surface-soft px-4 py-4"><p className="mb-3 text-xs text-steel">{a.when}</p><AnomalyBody a={a} focus={code} /></div> : null}
+                    {isOpen ? <div className="border-t border-hairline-soft bg-surface-soft px-4 py-4"><AnomalyBody a={a} focus={code} /></div> : null}
                   </li>
                 )
               })}
             </ul>
           </section>
         ))}
-        {hidden ? <button type="button" onClick={() => setAll(true)} className="mt-3 flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-hairline text-[13px] text-slate hover:bg-surface-soft">更早的 {hidden} 条<ChevronDown className="h-4 w-4" /></button> : null}
+        {hidden ? <button type="button" onClick={() => setAll(true)} className="mt-3 flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-hairline text-[13px] text-slate hover:bg-surface-soft">之前的 {hidden} 条<ChevronDown className="h-4 w-4" /></button> : null}
       </section>
 
-      <aside className="border-t border-hairline bg-surface-soft px-4 py-4 @min-[860px]:border-l @min-[860px]:border-t-0">
-        {open ? (
-          <>
-            <p className="eyebrow mb-2">这条异动有多重要</p>
-            <GradeBox a={open} code={code} />
-          </>
-        ) : null}
-        <p className="eyebrow mb-2 mt-5">管家对它的判断{judgments.length ? ` · ${judgments.length} 条` : ''}</p>
-        {judgments.length ? (
-          <ul className="overflow-hidden rounded-lg border border-hairline bg-canvas">
-            {judgments.map((j) => (
-              <li key={j.id} className="border-b border-hairline-soft last:border-b-0">
-                <button type="button" onClick={() => openReview(j.id)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-surface-soft">
-                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{j.up ? '看涨' : '看跌'} · {j.n} 个交易日内{j.up ? '涨过' : '跌破'} {j.line.toFixed(2)}</span><span className="block truncate text-xs text-steel">{j.anomaly.title}</span></span>
-                  <span className={cn('shrink-0 text-xs', j.status === 'pending' ? 'text-on-lavender' : 'text-steel')}>{j.status === 'pending' ? `${j.n - j.elapsed} 个交易日后对答案` : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}</span>
-                  <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-stone" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-[13px] text-steel">
-            {open?.tone === 'relief' ? '这是缓解风险的消息，管家只提醒，不做涨跌判断。'
-              : elsewhere.length ? `这件事上，管家的判断落在${elsewhere.join('、')}上，没有单独对${s.name}做判断。`
-              : '影响还不够明确，管家先记下来，不做判断。'}
-          </p>
-        )}
-        {judgments.length ? <p className="mt-1.5 text-xs text-steel">表态、对答案和复盘在判断页做。</p> : null}
-
-        <p className="eyebrow mb-2 mt-5">我的仓位，现在怎么办</p>
-        {!hasHoldings ? (
-          <div className="rounded-lg border border-dashed border-hairline-strong p-3.5 text-[13px] text-slate">
-            你还没有告诉管家持有哪些股票。补充后，这里会列出几种做法和各自的代价。
-            <div className="mt-2.5"><Button size="xs" variant="dark" onClick={() => openMe('holdings')}>补充持仓</Button></div>
-          </div>
-        ) : !w ? <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-[13px] text-steel">你没有持有{s.name}，不需要动。</p> : (
-          <>
-            <p className="text-[13px] text-charcoal">{s.name}占你持仓的 <b className="font-semibold tabular-nums">{(w * 100).toFixed(0)}%</b>。{plan ? '在这里定做法：' : '管家目前没有对它的判断在等结果或已经到价，不需要因为异动去动它。'}</p>
-            {plan ? <Planner key={plan.id} j={plan} /> : null}
-          </>
-        )}
+      <aside className="border-t border-hairline bg-surface-soft @min-[860px]:sticky @min-[860px]:top-0 @min-[860px]:h-dvh @min-[860px]:border-l @min-[860px]:border-t-0">
+        <StockChat code={code} anomalies={anomalies} judgments={judgments} focus={folded ? undefined : open} />
       </aside>
     </div>
   )

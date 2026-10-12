@@ -98,15 +98,17 @@ export function AnomalyBody({ a, focus }: { a: Anomaly; focus?: string }) {
           </ol>
         ) : <PathTree a={a} focus={focus} judged={a.judgments.map((d) => d.code)} />}
       </div>
-      <div>
-        <p className="eyebrow mb-1.5">证据</p>
-        {a.evidence.map((e, i) => (
-          <div key={i} className="mb-2 text-sm">
-            <p className="border-l-[3px] border-ink pl-2.5 text-slate">{e.text}</p>
-            <p className="mt-1 pl-3 text-xs text-steel">{e.label} · {e.source}</p>
-          </div>
-        ))}
-      </div>
+      <details className="group text-sm">
+        <summary className="cursor-pointer list-none text-[13px] text-steel hover:text-ink [&::-webkit-details-marker]:hidden">▸ 证据与来源 {a.evidence.length} 条</summary>
+        <div className="mt-2">
+          {a.evidence.map((e, i) => (
+            <div key={i} className="mb-2">
+              <p className="border-l-[3px] border-ink pl-2.5 text-slate">{e.text}</p>
+              <p className="mt-1 pl-3 text-xs text-steel">{e.label} · {e.source}</p>
+            </div>
+          ))}
+        </div>
+      </details>
     </div>
   )
 }
