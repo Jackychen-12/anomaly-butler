@@ -41,7 +41,7 @@ export function App() {
           ))}
         </nav>
         <div className="mt-auto px-2.5 text-xs leading-relaxed text-steel">
-          <button type="button" onClick={() => openMe('settings')} className="mb-2.5 block w-full rounded-md border border-hairline bg-canvas px-2.5 py-2 text-left hover:bg-surface-soft">
+          <button type="button" onClick={() => openMe('profile')} className="mb-2.5 block w-full rounded-md border border-hairline bg-canvas px-2.5 py-2 text-left hover:bg-surface-soft">
             <span className="block text-[11px] text-steel">我的画像</span>
             <span className="block text-[13px] font-medium text-ink">{profileSet(profile) ? profileLabel(profile) : '去设置 →'}</span>
           </button>

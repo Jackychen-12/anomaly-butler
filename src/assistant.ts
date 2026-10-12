@@ -9,10 +9,21 @@ import type { Lesson, Llm, MeTab, Page } from './store'
 
 /** 回答或提示后面可点的去处：某个页面、某只股票、「我的」里的某一栏，或某条判断的复盘对话 */
 export type Link = { label: string; page?: Page; code?: string; me?: MeTab; review?: string }
-export type Answer = { text: string[]; links: Link[] }
+/** stocks：回答里提到的股票，画成带涨跌的小标签；score：战绩，画成一条对错比例条 */
+export type Answer = { text: string[]; links: Link[]; stocks?: string[]; score?: { hit: number; miss: number; void: number } }
 export type AskCtx = { tick: string; prevTick?: string; votes: Record<string, Vote>; holdings: Record<string, number>; hasHoldings: boolean; lessons: Lesson[] }
 
-export const SUGGESTED = ['今天我要注意什么？', '你以前说得准吗？', '你记下了哪些经验？', '我需要调仓吗？']
+/** 开场可以直接点的问题：跟着当天的情况变（今天有新判断时，把那只股票放进来） */
+export function starters(c: AskCtx): string[] {
+  const fresh = judgmentsAt(c.tick).find((j) => j.status === 'pending' && j.issued === c.tick)
+  return [
+    '今天我要注意什么？',
+    ...(fresh ? [`${stockOf(fresh.code).name.replace('-W', '')}这条判断是怎么回事？`] : []),
+    '你以前说得准吗？',
+    '你记下了哪些经验？',
+    c.hasHoldings ? '按我的仓位，需要调仓吗？' : '我需要调仓吗？',
+  ]
+}
 
 export function answerLocal(q: string, c: AskCtx): Answer {
   const stock = STOCKS.find((s) => q.includes(s.name.replace('-W', '')) || q.toUpperCase().includes(s.code))
@@ -31,11 +42,11 @@ function aboutToday(c: AskCtx): Answer {
   const pending = judgmentsAt(c.tick).filter((j) => j.status === 'pending')
   if (!fresh.length) return { text: [`${fmtDate(c.tick)}早上没有新的异动。`, pending.length ? `还有 ${pending.length} 条判断在等结果。` : '也没有在等结果的判断。'], links: [{ label: '看判断结果', page: 'review' }] }
   const text = risk.length
-    ? risk.map((a) => `${a.title}。影响到你的自选：${a.hits.map((h) => stockOf(h).name).join('、')}。`)
+    ? risk.map((a) => `${a.title}，影响到你的 ${a.hits.length} 只自选。`)
     : ['今天没有新的大事件。']
   const moved = fresh.filter((a) => a.auto)
-  if (moved.length) text.push(`另外有 ${moved.length} 只自选上一个交易日波动很大：${moved.map((a) => a.title).join('；')}。`)
-  return { text, links: [...new Set(fresh.flatMap((a) => a.hits))].slice(0, 3).map((h) => ({ label: `看${stockOf(h).name}`, code: h })) }
+  if (moved.length) text.push(`另有 ${moved.length} 只自选的行情指标有异动。`)
+  return { text, links: [], stocks: [...new Set(fresh.flatMap((a) => a.hits))].slice(0, 6) }
 }
 
 function aboutStock(code: string, c: AskCtx): Answer {
@@ -47,7 +58,8 @@ function aboutStock(code: string, c: AskCtx): Answer {
   if (pending) text.push(`管家认为：${pending.text}。还有 ${pending.n - pending.elapsed} 个交易日对答案。`)
   const w = c.holdings[code]
   if (c.hasHoldings) text.push(w ? `它占你持仓的 ${Math.round(w * 100)}%。` : '你没有持有它。')
-  return { text, links: [{ label: `打开${s.name}`, code }] }
+  const todo = pending ?? js.find((j) => j.status !== 'pending')
+  return { text, links: todo ? [{ label: '按五步想清楚', review: todo.id }] : [], stocks: [code] }
 }
 
 function aboutScore(c: AskCtx): Answer {
@@ -57,7 +69,8 @@ function aboutScore(c: AskCtx): Answer {
   return {
     text: [`到 ${fmtDate(c.tick)} 为止，管家有 ${n} 条判断到期：说对 ${sc.butler.hit} 条，说错 ${sc.butler.miss} 条${sc.butler.void ? `，另有 ${sc.butler.void} 条因前提变化作废` : ''}。`,
       '最近市场整体大跌，看跌的判断本来就容易说对，不能代表平时的水平。每条判断说对或说错的原因都写在复盘里。'],
-    links: [{ label: '看复盘', page: 'review' }, { label: '看各类信号的评测', page: 'signals' }],
+    links: [{ label: '看全部判断', page: 'review' }, { label: '各类信号的评测', page: 'signals' }],
+    score: sc.butler,
   }
 }
 

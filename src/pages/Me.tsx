@@ -1,16 +1,18 @@
-/** 我的：投资画像（风险承受与风格）、持仓（可选补充）与调仓方案、长期记忆（经验与管家记下的事）。 */
-import { useEffect, useState } from 'react'
+/** 我的：管家设置（这个个人助理能做什么、记什么、什么时候主动找你、连着什么）、投资画像、持仓（可选补充）、长期记忆。 */
+import { useEffect, useState, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { DEMO_HOLDINGS, STOCKS } from '../data/case'
+import { SIGNALS } from '../data/signals'
 import { signalOf } from '../data/signals'
 import { JudgmentMeter } from '../charts'
-import { fmtDate, judgmentsAt, recentlySettled, stockOf } from '../engine'
+import { fmtDate, judgmentsAt, PRICE_SOURCE, recentlySettled, stockOf } from '../engine'
 import { HORIZON_LABEL, observed, profileLabel, profileSet, RISK_LABEL, type Profile } from '../profile'
 import { reasonStats } from '../review'
 import { Button, cn, LevelTag } from '../kit'
 import { Scroll } from '../layout'
 import { useStore, type Memory, type MeTab } from '../store'
 
-const TABS: { key: MeTab; label: string }[] = [{ key: 'settings', label: '投资画像' }, { key: 'holdings', label: '持仓' }, { key: 'memory', label: '长期记忆' }]
+const TABS: { key: MeTab; label: string }[] = [{ key: 'settings', label: '管家设置' }, { key: 'profile', label: '投资画像' }, { key: 'holdings', label: '持仓' }, { key: 'memory', label: '长期记忆' }]
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`
 
 export function MePage() {
@@ -25,7 +27,7 @@ export function MePage() {
             className={cn('-mb-px h-9 border-b-2 px-3 text-sm', meTab === t.key ? 'border-ink font-medium text-ink' : 'border-transparent text-steel hover:text-ink')}>{t.label}</button>
         ))}
       </div>
-      {meTab === 'holdings' ? <Holdings /> : meTab === 'memory' ? <MemoryList /> : <Settings />}
+      {meTab === 'holdings' ? <Holdings /> : meTab === 'memory' ? <MemoryList /> : meTab === 'profile' ? <ProfileTab /> : <AgentSettings />}
     </div>
     </Scroll>
   )
@@ -115,7 +117,7 @@ function MemoryList() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 @min-[1000px]:grid-cols-2">
       <section className="mt-5 min-w-0 rounded-lg border border-hairline p-4 @min-[1000px]:col-span-2">
         <div className="flex flex-wrap items-baseline gap-x-3"><h2 className="text-base font-semibold">关于你</h2><span className="text-sm font-medium">{profileSet(profile) ? profileLabel(profile) : '画像还没设完'}{profile.maxWeight ? ` · 单只不超过 ${profile.maxWeight}%` : ''}</span>
-          <button type="button" onClick={() => openMe('settings')} className="ml-auto text-[13px] text-link hover:underline">改画像 →</button></div>
+          <button type="button" onClick={() => openMe('profile')} className="ml-auto text-[13px] text-link hover:underline">改画像 →</button></div>
         {profile.rules.length ? <p className="mt-1.5 text-[13px] text-charcoal">我的原则：{profile.rules.join('；')}</p> : null}
         <AboutMe />
       </section>
@@ -209,10 +211,9 @@ const Q3: { v: NonNullable<Profile['reaction']>; label: string }[] = [{ v: 'cut'
 const CARD = 'rounded-lg border px-3.5 py-3 text-left transition-colors'
 const cardCls = (on: boolean) => cn(CARD, on ? 'border-primary bg-tint-lavender' : 'border-hairline hover:bg-surface-soft')
 
-function Settings() {
-  const { profile, setProfile, setOnboarded, reset, setPage } = useStore()
+function ProfileTab() {
+  const { profile, setProfile } = useStore()
   const [rule, setRule] = useState('')
-  const [confirm, setConfirm] = useState(false)
   const set = (p: Partial<Profile>, note: string) => setProfile(p, note)
   const addRule = () => { const t = rule.trim(); if (!t || profile.rules.length >= 3) return; set({ rules: [...profile.rules, t] }, `加了一条原则：${t}`); setRule('') }
   return (
@@ -297,14 +298,106 @@ function Settings() {
             <li>持仓超过你设的单只上限时提醒。</li>
           </ul>
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button size="xs" onClick={() => { setOnboarded(false); setPage('today') }}>重看新手引导</Button>
-          {confirm
-            ? <><Button size="xs" variant="dark" onClick={() => { reset(); setConfirm(false) }}>确认清空</Button><Button size="xs" variant="ghost" onClick={() => setConfirm(false)}>取消</Button></>
-            : <Button size="xs" variant="ghost" onClick={() => setConfirm(true)}>清空本地数据</Button>}
-        </div>
-        <p className="mt-2 text-xs text-steel">清空会删除画像、表态、持仓、经验和记录，恢复到初次打开的状态。</p>
       </aside>
+    </div>
+  )
+}
+
+// ── 管家设置 ────────────────────────────────────────────
+function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
+      className={cn('relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-40', checked ? 'bg-primary' : 'bg-hairline-strong')}>
+      <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-canvas shadow-subtle transition-[left]', checked ? 'left-[18px]' : 'left-0.5')} />
+    </button>
+  )
+}
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return <section><h2 className="eyebrow mb-1.5 px-1">{title}</h2><ul className="overflow-hidden rounded-lg border border-hairline">{children}</ul></section>
+}
+/** 一行设置：左边标题和一句说明，右边是开关、状态或去处 */
+function Item({ title, desc, right, onClick }: { title: string; desc?: ReactNode; right?: ReactNode; onClick?: () => void }) {
+  const body = (
+    <>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-ink">{title}</span>{desc ? <span className="mt-0.5 block text-[13px] text-steel">{desc}</span> : null}</span>
+      {right}{onClick ? <ChevronRight className="h-4 w-4 shrink-0 text-stone" /> : null}
+    </>
+  )
+  return (
+    <li className="border-b border-hairline-soft last:border-b-0">
+      {onClick ? <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-3.5 py-3 text-left hover:bg-surface-soft">{body}</button> : <div className="flex items-center gap-3 px-3.5 py-3">{body}</div>}
+    </li>
+  )
+}
+const On = () => <span className="shrink-0 text-xs text-steel">已开启</span>
+const Soon = () => <span className="shrink-0 rounded-xs bg-tint-gray px-1.5 text-xs leading-5 text-on-gray">规划中</span>
+
+/** 这是一个金融场景下的个人助理：这里管它能做什么、记什么、什么时候主动找你、连着哪些数据和账户。 */
+function AgentSettings() {
+  const { agent, setAgent, profile, lessons, memory, rules, hasHoldings, tick, openMe, setPage, setOnboarded, reset } = useStore()
+  const [confirm, setConfirm] = useState(false)
+  const live = SIGNALS.filter((x) => x.kind !== 'planned')
+  const settled = judgmentsAt(tick).filter((j) => j.status !== 'pending').length
+  const notify = (k: keyof typeof agent.notify, v: boolean) => setAgent({ ...agent, notify: { ...agent.notify, [k]: v } })
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-6 pt-5 @min-[1000px]:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-6">
+        <section className="relative overflow-hidden rounded-xl border border-hairline bg-surface-soft p-5">
+          <div aria-hidden="true" className="absolute inset-0 opacity-60 [background-image:radial-gradient(var(--hairline-strong)_1px,transparent_1px)] [background-size:14px_14px] [mask-image:linear-gradient(120deg,transparent_35%,black)]" />
+          <div className="relative">
+            <div className="flex items-center gap-2.5"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-ink text-base font-semibold text-canvas">异</span><div><p className="text-base font-semibold leading-tight">异动管家</p><p className="text-xs text-steel">你的自选股个人助理</p></div></div>
+            <p className="mt-4 text-lg font-semibold leading-snug">{profileSet(profile) ? profileLabel(profile) : '还不太了解你'}</p>
+            <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+              {[[STOCKS.length, '只自选在盯'], [lessons.length, '条经验记着'], [settled, '次对过答案']].map(([n, l]) => (
+                <div key={l} className="rounded-md bg-canvas px-2 py-2"><dd className="text-xl font-semibold tabular-nums leading-none">{n}</dd><dt className="mt-1 text-xs text-steel">{l}</dt></div>
+              ))}
+            </dl>
+          </div>
+        </section>
+
+        <Group title="它能做什么">
+          <Item title="盯异动" desc={`宏观政策与行情指标，已开 ${live.filter((x) => !rules.off.includes(x.id)).length} / ${live.length} 类信号`} onClick={() => setPage('signals')} />
+          <Item title="画出传导路径" desc="一件事怎么传到你的自选股" right={<On />} />
+          <Item title="给判断，到期对答案" desc="每个看法都写成能验证的话" right={<On />} />
+          <Item title="复盘并总结经验" desc="说对说错都记一条，由你决定留不留" right={<On />} />
+          <Item title="自己试更准的阈值" desc="发现历史上更准的设置时提建议，你点头才改" right={<Toggle checked={agent.tune} onChange={(v) => setAgent({ ...agent, tune: v })} label="自己试更准的阈值" />} />
+          <Item title="列出调仓做法" desc="只列做法和代价，不替你下单" right={<On />} />
+        </Group>
+
+        <Group title="模型">
+          <Item title="内置规则" desc="按信号库里的规则识别异动、生成判断和回答" right={<span className="shrink-0 rounded-xs bg-tint-mint px-1.5 text-xs leading-5 text-on-mint">使用中</span>} />
+          <Item title="接入大模型" desc="读资讯原文、现场归因、自由对话" right={<Soon />} />
+        </Group>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-6">
+        <Group title="它记得什么">
+          <Item title="记住我的表态、理由和选择" desc="关掉后不再新增记录，已有的保留" right={<Toggle checked={agent.memory} onChange={(v) => setAgent({ ...agent, memory: v })} label="记住我的表态、理由和选择" />} />
+          <Item title="长期记忆" desc={`${lessons.length} 条经验 · ${memory.length} 条记录`} onClick={() => openMe('memory')} />
+          <Item title="投资画像" desc={profileSet(profile) ? profileLabel(profile) : '还没设完'} onClick={() => openMe('profile')} />
+        </Group>
+
+        <Group title="什么时候主动找你">
+          <Item title="判断出结果、该复盘时" right={<Toggle checked={agent.notify.review} onChange={(v) => notify('review', v)} label="判断出结果、该复盘时提醒" />} />
+          <Item title="持仓股有风险、仓位超限时" right={<Toggle checked={agent.notify.holdings} onChange={(v) => notify('holdings', v)} label="持仓股有风险、仓位超限时提醒" />} />
+          <Item title="我让多留意的股票有新异动时" right={<Toggle checked={agent.notify.focus} onChange={(v) => notify('focus', v)} label="我让多留意的股票有新异动时提醒" />} />
+          <Item title="每天开盘前推送简报" desc="推送到手机" right={<Soon />} />
+        </Group>
+
+        <Group title="连接">
+          <Item title="证券账户" desc={hasHoldings ? '已有持仓（手动填写或模拟导入）' : '未连接。连接后按你的仓位提醒'} onClick={() => openMe('holdings')} />
+          <Item title="行情数据" desc={PRICE_SOURCE} right={<On />} />
+          <Item title="资讯与公告" desc="新闻、研报、交易所公告" right={<Soon />} />
+          <Item title="微信、飞书" desc="在聊天工具里收提醒、直接问管家" right={<Soon />} />
+        </Group>
+
+        <Group title="通用">
+          <Item title="重看新手引导" onClick={() => { setOnboarded(false); setPage('today') }} />
+          <Item title="清空本地数据" desc="删除画像、表态、持仓、经验和记录，恢复到初次打开的状态"
+            right={confirm ? <span className="flex shrink-0 gap-1.5"><Button size="xs" variant="dark" onClick={() => { reset(); setConfirm(false) }}>确认清空</Button><Button size="xs" variant="ghost" onClick={() => setConfirm(false)}>取消</Button></span> : <Button size="xs" onClick={() => setConfirm(true)}>清空</Button>} />
+          <Item title="关于" desc="演示版本，不构成投资建议。数据只存在你的浏览器里。" />
+        </Group>
+      </div>
     </div>
   )
 }

@@ -5,12 +5,16 @@ import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, 
 import { unreviewed } from './review'
 import type { Link } from './assistant'
 import { profileSet, type Profile } from './profile'
-import type { ReviewState } from './store'
+import type { Agent, ReviewState } from './store'
 
 export type Nudge = { id: string; text: string; action?: Link }
-type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState>; profile: Profile }
+type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState>; profile: Profile; agent: Agent }
 
-export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile }: Ctx): Nudge[] {
+/** 每条提醒归哪一类开关管（见「我的 → 管家设置」）。没列出的（比如请你设置画像）不受开关影响 */
+const KIND_OF = (id: string): keyof Agent['notify'] | 'tune' | null =>
+  /^(review|settled|split|due)/.test(id) ? 'review' : /^(held-hit|over|add-holdings)/.test(id) ? 'holdings' : id.startsWith('focus') ? 'focus' : id.startsWith('tip') ? 'tune' : null
+
+export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent }: Ctx): Nudge[] {
   const out: Nudge[] = []
   const js = judgmentsAt(tick)
   const fresh = anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick))
@@ -45,7 +49,7 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
   const tip = suggestions(tick)[0]
   if (tip) out.push({ id: `tip-${tip.signal}`, text: `我试了「${signalOf(tip.signal)?.name}」的几个阈值，${tip.to} 比现在的 ${tip.from} 在历史上更准。`, action: { label: '看看要不要改', page: 'signals' } })
   // 还没设投资画像
-  if (!profileSet(profile)) out.push({ id: 'profile', text: '告诉我你能接受多大的跌幅、一般拿多久，我按你的风格提醒。', action: { label: '设置画像', me: 'settings' } })
+  if (!profileSet(profile)) out.push({ id: 'profile', text: '告诉我你能接受多大的跌幅、一般拿多久，我按你的风格提醒。', action: { label: '设置画像', me: 'profile' } })
   // 还没填持仓，而今天有影响大的事
   if (!hasHoldings && fresh.some((a) => a.tone === 'risk' && a.strength >= 70))
     out.push({ id: 'add-holdings', text: '填上持仓，我按你的仓位排出先看哪条。', action: { label: '补充持仓', me: 'holdings' } })
@@ -55,5 +59,5 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
     const meRight = split.filter((j) => j.status === 'miss').length
     out.push({ id: 'split', text: `到目前为止你有 ${split.length} 次不同意管家，其中 ${meRight} 次是你对。`, action: { label: '看全部结果', page: 'review' } })
   }
-  return out.slice(0, 3)
+  return out.filter((n) => { const k = KIND_OF(n.id); return k == null || (k === 'tune' ? agent.tune : agent.notify[k]) }).slice(0, 3)
 }

@@ -8,7 +8,13 @@ import { EMPTY_PROFILE, styleFactor, type PlanChoice, type Profile } from './pro
 
 export type Page = 'today' | 'watch' | 'review' | 'signals' | 'me'
 const PAGES: Page[] = ['today', 'watch', 'review', 'signals', 'me']
-export type MeTab = 'holdings' | 'memory' | 'settings'
+export type MeTab = 'settings' | 'profile' | 'holdings' | 'memory'
+/**
+ * 管家设置：这个助理被允许做什么。
+ * memory：要不要记下我的表态、理由和选择；tune：要不要自己试更准的阈值并提建议；notify：哪些事可以主动提醒我。
+ */
+export type Agent = { memory: boolean; tune: boolean; notify: { review: boolean; holdings: boolean; focus: boolean } }
+export const DEFAULT_AGENT: Agent = { memory: true, tune: true, notify: { review: true, holdings: true, focus: true } }
 
 export const VOTE_LABEL: Record<Vote, string> = { agree: '我也这么看', disagree: '我不这么看', watch: '先不表态' }
 /** 管家记下的一件事。day 是记录时演示数据里的日期。 */
@@ -36,6 +42,7 @@ type Saved = {
   rules: Rules
   /** 每条判断上记下的调仓选择。key 是判断 id */
   plans: Record<string, PlanChoice>
+  agent: Agent
 }
 type Store = Saved & {
   /** 演示数据里的「今天」（早上开盘前），以及上一个交易日。固定不变 */
@@ -62,6 +69,7 @@ type Store = Saved & {
   setRules: (r: Rules, note: string) => void
   /** 记下一次调仓选择，note 写进记忆 */
   savePlan: (jid: string, c: PlanChoice, note: string, code: string) => void
+  setAgent: (a: Agent) => void
   /** judgmentText 用于写进记忆，让用户日后看得懂当时表态的是哪一条 */
   vote: (id: string, v: Vote, judgmentText: string, code: string) => void
   setPref: (code: string, p: Pref) => void
@@ -82,7 +90,7 @@ type Store = Saved & {
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
-const KEY = 'anomaly-butler:v7'
+const KEY = 'anomaly-butler:v8'
 /** 演示预置：三条较早的判断已经复盘过，管家的经验已记进长期记忆。只在与实际结算结果一致时预置。 */
 const SEED_REVIEWED = ['j-xm-place', 'j-nv-energy', 'j-xm-su7']
 function fresh(tick: string): Saved {
@@ -92,7 +100,7 @@ function fresh(tick: string): Saved {
     votes: SEED_VOTES, prefs: {}, holdings: {}, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
     lessons: done.map((j) => ({ id: `seed-${j.id}`, jid: j.id, signal: j.anomaly.signal, code: j.code, text: j.review!.lesson, by: 'butler' as const, at: j.settledOn!, seed: true })),
     reviewState: Object.fromEntries(done.map((j) => [j.id, 'kept' as const])), dialog: {},
-    profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {},
+    profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {}, agent: DEFAULT_AGENT,
   }
 }
 function load(tick: string): Saved {
@@ -129,7 +137,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const patch = (p: Partial<Saved>) => setSaved((s) => ({ ...s, ...p }))
   const setPage = (p: Page) => { location.hash = `#/${p}`; setPageState(p) }
-  const remember: Store['remember'] = (m) => setSaved((s) => ({ ...s, memory: [{ ...m, id: `${Date.now()}-${s.memory.length}`, day: tick }, ...s.memory].slice(0, 200) }))
+  // 用户关掉「记住我的操作」后不再往记录里写
+  const remember: Store['remember'] = (m) => setSaved((s) => !s.agent.memory ? s : ({ ...s, memory: [{ ...m, id: `${Date.now()}-${s.memory.length}`, day: tick }, ...s.memory].slice(0, 200) }))
   const hasHoldings = Object.values(saved.holdings).some((w) => w > 0)
   const i = TICKS.indexOf(tick)
 
@@ -195,6 +204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setProfile: (p, note) => { setSaved((s) => ({ ...s, profile: { ...s.profile, ...p } })); remember({ kind: 'profile', text: note }) },
     remember,
     forget: (id) => setSaved((s) => ({ ...s, memory: s.memory.filter((m) => m.id !== id) })),
+    setAgent: (a) => patch({ agent: a }),
     setOnboarded: (v) => patch({ onboarded: v }),
     setLlm: (l) => patch({ llm: l }),
     reset: () => setSaved(fresh(tick)),

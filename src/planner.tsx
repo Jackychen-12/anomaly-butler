@@ -50,7 +50,7 @@ export function Planner({ j }: { j: Judgment }) {
           <label className="mt-4 block text-[13px] text-steel" htmlFor="keep">或者自己定：保留 <b className="font-medium tabular-nums text-ink">{Math.round(keep * 100)}%</b> 的{s.name}仓位</label>
           <input id="keep" type="range" min={0} max={100} step={5} value={Math.round(keep * 100)} onChange={(e) => setKeep(Number(e.target.value) / 100)} className="mt-1.5 w-full accent-[var(--primary)]" />
           {off ? <p className="mt-2 rounded-md bg-tint-yellow px-3 py-2 text-[13px] text-on-yellow">{off}决定仍然由你做，记下选择时我会一并记下这次和平时不同。</p> : null}
-          {profileSet(profile) ? null : <button type="button" onClick={() => openMe('settings')} className="mt-2 text-[13px] text-link hover:underline">设置投资画像后，会标出更接近你风格的做法 →</button>}
+          {profileSet(profile) ? null : <button type="button" onClick={() => openMe('profile')} className="mt-2 text-[13px] text-link hover:underline">设置投资画像后，会标出更接近你风格的做法 →</button>}
         </div>
         <div className="rounded-lg bg-surface-soft p-4">
           <p className="eyebrow">这样调整之后</p>
