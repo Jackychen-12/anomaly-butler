@@ -1,7 +1,7 @@
 /** 全局状态：表态、提醒偏好、持仓、长期记忆（经验）、复盘对话、设置（存在浏览器本地），以及当前页面与提问对话。 */
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import type { Answer } from './assistant'
-import { SEED_REASONS, SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
+import { DEMO_HOLDINGS, SEED_REASONS, SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
 import { signalOf } from './data/signals'
 import { configure, DEFAULT_RULES, grade, judgmentsAt, PREF_LABEL, type Anomaly, type Grade, type Judgment, type Pref, type Rules } from './engine'
 import { EMPTY_PROFILE, styleFactor, type PlanChoice, type Profile } from './profile'
@@ -102,14 +102,14 @@ type Store = Saved & {
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
-const KEY = 'anomaly-butler:v9'
+const KEY = 'anomaly-butler:v10'
 /** 演示预置：三条较早的判断已经复盘过，管家的经验已记进长期记忆。只在与实际结算结果一致时预置。 */
 const SEED_REVIEWED = ['j-xm-place', 'j-nv-energy', 'j-xm-su7']
 function fresh(tick: string): Saved {
   configure(DEFAULT_RULES)
   const done = judgmentsAt(tick).filter((j) => SEED_REVIEWED.includes(j.id) && j.review)
   return {
-    votes: SEED_VOTES, prefs: {}, holdings: {}, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
+    votes: SEED_VOTES, prefs: {}, holdings: DEMO_HOLDINGS, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
     lessons: done.map((j) => ({ id: `seed-${j.id}`, jid: j.id, signal: j.anomaly.signal, code: j.code, text: j.review!.lesson, by: 'butler' as const, at: j.settledOn!, seed: true })),
     reviewState: Object.fromEntries(done.map((j) => [j.id, 'kept' as const])), dialog: {},
     profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {}, agent: DEFAULT_AGENT, sub: FREE_SUB,
@@ -139,7 +139,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // 引擎按当前规则识别异动；放在渲染里同步应用，保证下面的页面读到的是新规则的结果
   configure(saved.rules)
   const [page, setPageState] = useState<Page>(pageFromHash)
-  const [meTab, setMeTab] = useState<MeTab>('settings')
+  const [meTab, setMeTab] = useState<MeTab>('plan')
   const [code, setCode] = useState<string | null>(null)
   const [chat, setChat] = useState<ChatMsg[]>([])
   const [reviewId, setReviewId] = useState<string | null>(null)

@@ -17,8 +17,8 @@ import { ObservedPanel } from './Observed'
 import { PlanTab, TIER_LABEL, usageNote, useUsage } from './Plan'
 import { ProfileTab } from './Profile'
 
-// 管家设置和订阅排在最前，然后才是画像、持仓、长期记忆
-const TABS: { key: MeTab; label: string }[] = [{ key: 'settings', label: '管家设置' }, { key: 'plan', label: '订阅' }, { key: 'profile', label: '投资画像' }, { key: 'holdings', label: '持仓' }, { key: 'memory', label: '长期记忆' }]
+// 订阅和管家设置排在最前，然后才是画像、持仓、长期记忆
+const TABS: { key: MeTab; label: string }[] = [{ key: 'plan', label: '订阅' }, { key: 'settings', label: '管家设置' }, { key: 'profile', label: '投资画像' }, { key: 'holdings', label: '持仓' }, { key: 'memory', label: '长期记忆' }]
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`
 
 export function MePage() {
@@ -279,7 +279,9 @@ function AgentSettings() {
           <Item title="复盘并总结经验" desc="说对说错都记一条，由你决定留不留" right={<On />} />
           <Item title="列出调仓做法" desc="只列做法和代价，不替你下单" right={<On />} />
         </Group>
+      </div>
 
+      <div className="flex min-w-0 flex-col gap-6">
         <Group title="什么时候主动找你">
           <Item title="判断出结果、该复盘时" right={<Toggle checked={agent.notify.review} onChange={(v) => notify('review', v)} label="判断出结果、该复盘时提醒" />} />
           <Item title="持仓股有风险、仓位超限时" right={<Toggle checked={agent.notify.holdings} onChange={(v) => notify('holdings', v)} label="持仓股有风险、仓位超限时提醒" />} />

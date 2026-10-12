@@ -6,6 +6,7 @@ import { anomaliesOf, fmtDate, isFresh, judgmentsOf, type Level, lastBar, stockO
 import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
 import { AnomalyBody, GradeBox, JudgmentCard, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
+import { Planner } from '../planner'
 import { useStore } from '../store'
 
 type Row = { s: Stock; fresh: { a: Anomaly; g: Grade }[]; pending: Judgment[]; top: number }
@@ -123,6 +124,9 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
   const focus = judgments.find((j) => j.anomaly.id === open?.id)
   const others = judgments.filter((j) => j.id !== focus?.id)
   const elsewhere = open ? open.judgments.filter((d) => d.code !== code).map((d) => stockOf(d.code).name) : []
+  // 持有这只股票时，直接在这里列出调仓做法：优先用选中异动的判断，其次是在等结果的、已经到价的
+  const actionable = (j: Judgment) => j.status === 'pending' || j.status === 'hit'
+  const plan = w ? [focus, ...judgments].find((j): j is Judgment => !!j && actionable(j)) : undefined
   const freshHigh = anomalies.filter((a) => isFresh(a, tick, prevTick)).length
 
   return (
@@ -203,12 +207,17 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
         ) : null}
 
         <p className="eyebrow mb-2 mt-5">和我的持仓有什么关系</p>
-        <div className="rounded-lg border border-dashed border-hairline-strong p-3.5 text-[13px] text-slate">
-          {!hasHoldings ? '你还没有告诉管家持有哪些股票。补充后，提醒会按你的仓位排序，并给出调仓的几种做法。'
-            : w ? `${s.name}占你持仓的 ${(w * 100).toFixed(0)}%。${judgments.some((j) => j.status === 'pending') ? '管家对它有一条判断在等结果，可以看看有哪些做法。' : ''}`
-            : `你没有持有${s.name}，不需要调仓。`}
-          {hasHoldings && !w ? null : <div className="mt-2.5"><Button size="xs" variant="dark" onClick={() => openMe('holdings')}>{hasHoldings ? '看调仓方案' : '补充持仓'}</Button></div>}
-        </div>
+        {!hasHoldings ? (
+          <div className="rounded-lg border border-dashed border-hairline-strong p-3.5 text-[13px] text-slate">
+            你还没有告诉管家持有哪些股票。补充后，提醒会按你的仓位排序，并在这里给出调仓的几种做法。
+            <div className="mt-2.5"><Button size="xs" variant="dark" onClick={() => openMe('holdings')}>补充持仓</Button></div>
+          </div>
+        ) : !w ? <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-[13px] text-steel">你没有持有{s.name}，不需要调仓。</p> : (
+          <>
+            <p className="text-[13px] text-charcoal">{s.name}占你持仓的 <b className="font-semibold tabular-nums">{(w * 100).toFixed(0)}%</b>。{plan ? '下面是几种做法和各自的代价，决定由你做。' : '管家目前没有对它的判断在等结果或已经到价，不需要因为异动调仓。'}</p>
+            {plan ? <div className="[&>div]:bg-canvas"><Planner key={plan.id} j={plan} /></div> : null}
+          </>
+        )}
       </aside>
     </div>
   )
