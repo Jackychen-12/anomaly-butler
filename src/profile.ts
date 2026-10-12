@@ -8,10 +8,12 @@ export type Profile = {
   horizon: 'short' | 'mid' | 'long' | null
   /** 遇到大跌时通常：先减仓 / 先观察 / 越跌越买 */
   reaction: 'cut' | 'hold' | 'add' | null
+  /** 单只股票最多放多少仓位（%） */
+  maxWeight: 10 | 20 | 30 | null
   /** 用户自己写的原则 */
   rules: string[]
 }
-export const EMPTY_PROFILE: Profile = { tolerance: null, horizon: null, reaction: null, rules: [] }
+export const EMPTY_PROFILE: Profile = { tolerance: null, horizon: null, reaction: null, maxWeight: null, rules: [] }
 export const HORIZON_LABEL = { short: '短线', mid: '中线', long: '长线' } as const
 export const RISK_LABEL = { cut: '保守', hold: '稳健', add: '积极' } as const
 export const profileSet = (p: Profile) => p.tolerance != null && p.horizon != null && p.reaction != null
@@ -51,4 +53,25 @@ export function conflict(p: Profile, keep: number, j: Judgment): string | null {
   if (p.reaction === 'add' && keep < 1) return '你设定的是越跌越买，这次选择减仓，和平时不一样。'
   if (p.reaction === 'cut' && keep === 1 && Math.abs(j.thr) >= p.tolerance!) return '跌幅已到你设定的承受上限，而你选择不动，和设定的做法不一样。'
   return null
+}
+
+/** 一次调仓选择：保留了多少仓位，是否和设定的风格不一样 */
+export type PlanChoice = { keep: number; off: boolean }
+/**
+ * 管家从行为里观察到的你：画像不只是自己填的那几项，也来自长期记下的表态和调仓选择。
+ * 设定和实际对不上时，给出一句提醒（mismatch）。
+ */
+export function observed(p: Profile, plans: Record<string, PlanChoice>, stats: { disagree: number; disagreeRight: number; votes: number }, holdings: Record<string, number>, nameOf: (code: string) => string): { facts: string[]; mismatch: string | null } {
+  const facts: string[] = []
+  const choices = Object.values(plans)
+  const cut = choices.filter((c) => c.keep < 1).length
+  if (choices.length) facts.push(`记下过 ${choices.length} 次调仓选择：${choices.length - cut} 次不动，${cut} 次减仓或卖出。`)
+  if (stats.votes) facts.push(`表过 ${stats.votes} 次态${stats.disagree ? `；${stats.disagree} 次和管家意见不同，其中 ${stats.disagreeRight} 次你对` : ''}。`)
+  const over = p.maxWeight ? Object.entries(holdings).filter(([, w]) => w * 100 > p.maxWeight!).map(([c]) => nameOf(c)) : []
+  if (over.length) facts.push(`${over.join('、')}的仓位超过了你设的单只上限（${p.maxWeight}%）。`)
+  let mismatch: string | null = null
+  const off = choices.filter((c) => c.off).length
+  if (off >= 2) mismatch = `有 ${off} 次选择和设定的风格不一样。也许实际的你和设定的不同，可以考虑改一下画像。`
+  else if (p.reaction === 'hold' && choices.length >= 2 && cut / choices.length > 0.6) mismatch = '你设定的是「先不动，观察」，但实际多数时候选择了减仓。'
+  return { facts, mismatch }
 }

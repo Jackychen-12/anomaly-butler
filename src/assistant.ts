@@ -77,8 +77,8 @@ function aboutHoldings(c: AskCtx): Answer {
   if (!js.length) return { text: ['你持有的股票上，目前没有在等结果的判断，不需要因为异动调仓。'], links: [{ label: '看持仓', me: 'holdings' }] }
   return {
     text: [`你持有的股票里，有 ${js.length} 只管家认为短期有下跌风险：${js.map((j) => `${stockOf(j.code).name}（占 ${Math.round(c.holdings[j.code] * 100)}%）`).join('、')}。`,
-      '我列了不动、减一半、全部卖出三种做法和各自的代价，你也可以自己定比例。这不是投资建议，决定由你来做。'],
-    links: [{ label: '看调仓方案', me: 'holdings' }],
+      '每条判断的第四步里有不动、减一半、全部卖出三种做法和各自的代价，也可以自己定比例。这不是投资建议，决定由你来做。'],
+    links: js.map((j) => ({ label: `${stockOf(j.code).name}的做法`, review: j.id })),
   }
 }
 

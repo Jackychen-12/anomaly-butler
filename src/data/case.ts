@@ -62,6 +62,8 @@ export type EventDef = {
   tone: 'risk' | 'relief'
   hits: string[]
   chain: { label: string; text: string }[]
+  /** 传导路径的分支：这件事通过什么途径（via）影响到哪几只自选股。不写时所有受影响的股票走同一条路径 */
+  paths?: { via: string; codes: string[] }[]
   evidence: { label: string; text: string; source: string }[]
   judgments: JudgmentDef[]
 }
@@ -107,6 +109,11 @@ export const EVENTS: EventDef[] = [
     id: 'tariff', signal: 'tariff', tick: '2025-04-03', when: '4月3日 04:00（北京时间）', cat: '宏观政策', tone: 'risk', strength: 92,
     title: '美国宣布「对等关税」，对华加征 34%',
     hits: ['002475', 'AAPL', 'PDD'],
+    paths: [
+      { via: '对美出口的代工订单和利润承压', codes: ['002475'] },
+      { via: '在华制造的美国品牌成本上升', codes: ['AAPL'] },
+      { via: '小额包裹免税取消，跨境电商成本上升', codes: ['PDD'] },
+    ],
     chain: [
       { label: '政策', text: '4月2日（美东）签署行政令：10% 基准关税 4月5日生效，对华 34% 对等关税 4月9日生效' },
       { label: '行业', text: '消费电子代工、跨境电商直接承压；同日宣布 5月2日起取消中国小额包裹免税' },
@@ -126,6 +133,10 @@ export const EVENTS: EventDef[] = [
     id: 'retaliate', signal: 'tariff', tick: '2025-04-07', when: '4月4日 傍晚', cat: '宏观政策', tone: 'risk', strength: 88,
     title: '中国宣布对美全部进口商品加征 34% 关税',
     hits: ['00700', '300750', '01810'],
+    paths: [
+      { via: '假期积压的抛压集中释放，港股科技股补跌', codes: ['00700', '01810'] },
+      { via: 'A股开市补跌，出口相关的制造业首当其冲', codes: ['300750'] },
+    ],
     chain: [
       { label: '政策', text: '4月10日起对原产于美国的所有进口商品加征 34% 关税，并对部分中重稀土实施出口管制' },
       { label: '市场', text: '清明假期期间美股连续两日大跌，A股与港股开市后面临集中补跌' },
@@ -141,6 +152,10 @@ export const EVENTS: EventDef[] = [
     id: 'huijin', signal: 'market-support', tick: '2025-04-08', when: '4月7日 盘中', cat: '宏观政策', tone: 'relief', strength: 38,
     title: '中央汇金公告增持 ETF，多家央企宣布增持回购',
     hits: ['600519', '300750', '002475'],
+    paths: [
+      { via: '国家队买入，托底指数权重股', codes: ['600519', '300750'] },
+      { via: '不改变出口链面临的关税压力', codes: ['002475'] },
+    ],
     chain: [
       { label: '政策', text: '中央汇金表示坚定看好中国资本市场，已再次增持交易型开放式指数基金' },
       { label: '影响', text: '对指数权重股形成托底，不改变出口链个股面临的关税压力' },
@@ -152,6 +167,11 @@ export const EVENTS: EventDef[] = [
     id: 'tariff-104', signal: 'tariff', tick: '2025-04-09', when: '4月8日（美东）', cat: '宏观政策', tone: 'risk', strength: 84,
     title: '美国对华关税叠加至 104%，4月9日生效',
     hits: ['NVDA', 'AAPL', 'PDD', '002475'],
+    paths: [
+      { via: '中方可能反制，美国芯片公司的对华收入有风险', codes: ['NVDA'] },
+      { via: '在华制造、销往美国的成本再上升', codes: ['AAPL', '002475'] },
+      { via: '跨境电商的关税成本再上升', codes: ['PDD'] },
+    ],
     chain: [
       { label: '政策', text: '美方在原有基础上再加征 50%，对华累计税率升至 104%' },
       { label: '行业', text: '半导体与硬件供应链成本上升，对华收入与在华制造同时承压' },
@@ -167,6 +187,10 @@ export const EVENTS: EventDef[] = [
     id: 'pause', signal: 'tariff', tick: '2025-04-10', when: '4月9日（美东）午后', cat: '宏观政策', tone: 'relief', strength: 60,
     title: '美国对多数经济体暂缓对等关税 90 天，对华升至 125%',
     hits: ['NVDA', 'AAPL', '002475', 'PDD'],
+    paths: [
+      { via: '全球风险偏好快速修复', codes: ['NVDA', 'AAPL'] },
+      { via: '对华税率不降反升，出口链压力仍在', codes: ['002475', 'PDD'] },
+    ],
     chain: [
       { label: '政策', text: '除中国外的多数经济体对等关税暂缓 90 天，期间适用 10% 基准税率' },
       { label: '影响', text: '全球风险偏好快速修复；对华税率不降反升，出口链个股压力仍在' },
@@ -178,6 +202,7 @@ export const EVENTS: EventDef[] = [
     id: 'exempt', signal: 'tariff', tick: '2025-04-14', when: '4月11日（美东）深夜', cat: '宏观政策', tone: 'relief', strength: 58,
     title: '美国豁免智能手机、电脑等产品的对等关税',
     hits: ['002475', 'AAPL', '01810'],
+    paths: [{ via: '手机、电脑免于对等关税，果链和品牌厂商压力缓解', codes: ['002475', 'AAPL', '01810'] }],
     chain: [
       { label: '政策', text: '海关指引将智能手机、电脑、半导体设备等列入对等关税豁免范围' },
       { label: '影响', text: '果链代工与品牌厂商压力缓解。4月3日关税判断写明的失效条件在此时出现，但已晚于结算' },
@@ -208,6 +233,8 @@ export const AUTO_JUDGMENTS: Record<string, Omit<JudgmentDef, 'code'>> = {
 export type Vote = 'agree' | 'disagree' | 'watch'
 /** 演示用的「我的表态」，可以在界面里改。 */
 export const SEED_VOTES: Record<string, Vote> = { 'j-xm-place': 'disagree', 'j-nv-energy': 'disagree', 'j-xm-su7': 'agree' }
+/** 演示用的「我的理由」（表态时选的是哪一环），与上面三条表态对应。 */
+export const SEED_REASONS: Record<string, string> = { 'j-xm-place': 'priced', 'j-nv-energy': 'event', 'j-xm-su7': 'event' }
 
 /**
  * 事后复盘：判断结算之后，为什么对或错、当时漏看了什么、对信号规则有什么启示。

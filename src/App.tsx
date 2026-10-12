@@ -12,7 +12,7 @@ import { SignalsPage } from './pages/Signals'
 import { MePage } from './pages/Me'
 
 const NAV: { key: Page; label: string; icon: LucideIcon }[] = [
-  { key: 'today', label: '今日', icon: House }, { key: 'watch', label: '自选', icon: Star }, { key: 'review', label: '复盘', icon: ClipboardCheck },
+  { key: 'today', label: '今日', icon: House }, { key: 'watch', label: '自选', icon: Star }, { key: 'review', label: '判断', icon: ClipboardCheck },
   { key: 'signals', label: '信号库', icon: Radar }, { key: 'me', label: '我的', icon: User },
 ]
 
@@ -82,7 +82,7 @@ export function App() {
 const STEPS = [
   { title: '管家帮你盯着自选股', body: '首页两张图：每只自选股和每个板块的涨跌，有异动的会打上圆点。下面是今天和你有关的事。' },
   { title: '每个看法到期都能对答案', body: '管家的看法写成一句能验证的话，比如「5 个交易日内会跌破 34.97」，旁边的进度条显示离这个价格还有多远。你可以表态，到期看谁对。' },
-  { title: '说对说错，都一起复盘', body: '结果出来后和管家聊一遍，把经验记进长期记忆，下次同类情况会拿出来参考。在「我的」里设好投资画像，管家会按你的风格提醒。' },
+  { title: '每条判断按五步想清楚', body: '发生了什么、管家怎么看、你怎么看、你打算怎么做、对答案与复盘。说对说错都把经验记进长期记忆，下次同类情况拿出来参考。' },
 ]
 
 /** 首次打开的三步说明，可以跳过，之后能在「我的 → 设置」里重看。 */

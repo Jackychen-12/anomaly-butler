@@ -1,10 +1,10 @@
 /** 全局状态：表态、提醒偏好、持仓、长期记忆（经验）、复盘对话、设置（存在浏览器本地），以及当前页面与提问对话。 */
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import type { Answer } from './assistant'
-import { SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
+import { SEED_REASONS, SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
 import { signalOf } from './data/signals'
-import { grade, judgmentsAt, PREF_LABEL, type Anomaly, type Grade, type Judgment, type Pref } from './engine'
-import { EMPTY_PROFILE, styleFactor, type Profile } from './profile'
+import { configure, DEFAULT_RULES, grade, judgmentsAt, PREF_LABEL, type Anomaly, type Grade, type Judgment, type Pref, type Rules } from './engine'
+import { EMPTY_PROFILE, styleFactor, type PlanChoice, type Profile } from './profile'
 
 export type Page = 'today' | 'watch' | 'review' | 'signals' | 'me'
 const PAGES: Page[] = ['today', 'watch', 'review', 'signals', 'me']
@@ -12,7 +12,7 @@ export type MeTab = 'holdings' | 'memory' | 'settings'
 
 export const VOTE_LABEL: Record<Vote, string> = { agree: '我也这么看', disagree: '我不这么看', watch: '先不表态' }
 /** 管家记下的一件事。day 是记录时演示数据里的日期。 */
-export type Memory = { id: string; day: string; kind: 'vote' | 'note' | 'pref' | 'plan' | 'ask' | 'holding' | 'profile'; text: string; code?: string }
+export type Memory = { id: string; day: string; kind: 'vote' | 'note' | 'pref' | 'plan' | 'ask' | 'holding' | 'profile' | 'rule'; text: string; code?: string }
 /**
  * 一条经验（长期记忆）：从一条有结果的判断里总结出来，按信号归类，以后同类信号出现时拿出来参考。
  * by：管家总结的还是用户自己写的；at：来源判断出结果的日期；seed：演示预置。
@@ -30,6 +30,12 @@ type Saved = {
   votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; memory: Memory[]; onboarded: boolean; llm: Llm
   lessons: Lesson[]; reviewState: Record<string, ReviewState>; dialog: Record<string, Turn[]>
   profile: Profile
+  /** 表态时选的理由：同意或不同意的是哪一环（见 review.ts 的 REASONS）。key 是判断 id */
+  reasons: Record<string, string>
+  /** 微观指标的阈值和开关，用户可以在信号库里调 */
+  rules: Rules
+  /** 每条判断上记下的调仓选择。key 是判断 id */
+  plans: Record<string, PlanChoice>
 }
 type Store = Saved & {
   /** 演示数据里的「今天」（早上开盘前），以及上一个交易日。固定不变 */
@@ -50,6 +56,12 @@ type Store = Saved & {
   /** 对管家提出的经验做决定 */
   decide: (j: Judgment, d: ReviewState) => void
   forgetLesson: (id: string) => void
+  /** 记下表态的理由（选的是哪一环）。label 写进记忆 */
+  setReason: (j: Judgment, key: string, label: string) => void
+  /** note 写进记忆，说明改了什么 */
+  setRules: (r: Rules, note: string) => void
+  /** 记下一次调仓选择，note 写进记忆 */
+  savePlan: (jid: string, c: PlanChoice, note: string, code: string) => void
   /** judgmentText 用于写进记忆，让用户日后看得懂当时表态的是哪一条 */
   vote: (id: string, v: Vote, judgmentText: string, code: string) => void
   setPref: (code: string, p: Pref) => void
@@ -59,7 +71,8 @@ type Store = Saved & {
   weightOf: (code: string) => number | null
   /** 一条异动对某只股票的等级：事件影响 × 仓位 × 提醒偏好 × 投资风格 */
   gradeOf: (a: Anomaly, code: string) => Grade
-  setProfile: (p: Profile, note: string) => void
+  /** 改画像里的某几项（其余不变），note 写进记忆 */
+  setProfile: (p: Partial<Profile>, note: string) => void
   remember: (m: Omit<Memory, 'id' | 'day'>) => void
   forget: (id: string) => void
   setOnboarded: (v: boolean) => void
@@ -69,16 +82,17 @@ type Store = Saved & {
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
-const KEY = 'anomaly-butler:v4'
+const KEY = 'anomaly-butler:v7'
 /** 演示预置：三条较早的判断已经复盘过，管家的经验已记进长期记忆。只在与实际结算结果一致时预置。 */
 const SEED_REVIEWED = ['j-xm-place', 'j-nv-energy', 'j-xm-su7']
 function fresh(tick: string): Saved {
+  configure(DEFAULT_RULES)
   const done = judgmentsAt(tick).filter((j) => SEED_REVIEWED.includes(j.id) && j.review)
   return {
     votes: SEED_VOTES, prefs: {}, holdings: {}, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
     lessons: done.map((j) => ({ id: `seed-${j.id}`, jid: j.id, signal: j.anomaly.signal, code: j.code, text: j.review!.lesson, by: 'butler' as const, at: j.settledOn!, seed: true })),
     reviewState: Object.fromEntries(done.map((j) => [j.id, 'kept' as const])), dialog: {},
-    profile: EMPTY_PROFILE,
+    profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {},
   }
 }
 function load(tick: string): Saved {
@@ -98,6 +112,8 @@ const nameOf = (code: string) => STOCKS.find((s) => s.code === code)?.name ?? co
 export function StoreProvider({ children }: { children: ReactNode }) {
   const tick = useMemo(initialTick, [])
   const [saved, setSaved] = useState<Saved>(() => load(tick))
+  // 引擎按当前规则识别异动；放在渲染里同步应用，保证下面的页面读到的是新规则的结果
+  configure(saved.rules)
   const [page, setPageState] = useState<Page>(pageFromHash)
   const [meTab, setMeTab] = useState<MeTab>('settings')
   const [code, setCode] = useState<string | null>(null)
@@ -157,8 +173,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }))
     },
     forgetLesson: (id) => setSaved((s) => ({ ...s, lessons: s.lessons.filter((l) => l.id !== id) })),
+    savePlan: (jid, c, note, code) => { patch({ plans: { ...saved.plans, [jid]: c } }); remember({ kind: 'plan', code, text: note }) },
+    setRules: (r, note) => { patch({ rules: r }); remember({ kind: 'rule', text: note }) },
+    setReason: (j, key, label) => {
+      patch({ reasons: { ...saved.reasons, [j.id]: key } })
+      remember({ kind: 'note', code: j.code, text: `对「${j.text}」的理由：${label}` })
+    },
     vote: (id, v, judgmentText, c) => {
-      patch({ votes: { ...saved.votes, [id]: v } })
+      const { [id]: _dropped, ...rest } = saved.reasons
+      patch({ votes: { ...saved.votes, [id]: v }, reasons: saved.votes[id] === v ? saved.reasons : rest })
       remember({ kind: 'vote', code: c, text: `对「${judgmentText}」表态：${VOTE_LABEL[v]}` })
     },
     setPref: (c, p) => {
@@ -169,7 +192,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     hasHoldings,
     weightOf: (c) => (hasHoldings ? saved.holdings[c] ?? 0 : null),
     gradeOf: (a, c) => grade(a.strength, hasHoldings ? saved.holdings[c] ?? 0 : null, saved.prefs[c] ?? 'normal', styleFactor(saved.profile, signalOf(a.signal)?.group)),
-    setProfile: (p, note) => { patch({ profile: p }); remember({ kind: 'profile', text: note }) },
+    setProfile: (p, note) => { setSaved((s) => ({ ...s, profile: { ...s.profile, ...p } })); remember({ kind: 'profile', text: note }) },
     remember,
     forget: (id) => setSaved((s) => ({ ...s, memory: s.memory.filter((m) => m.id !== id) })),
     setOnboarded: (v) => patch({ onboarded: v }),
