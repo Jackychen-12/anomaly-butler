@@ -49,7 +49,7 @@ export function SignalsPage() {
     <>
       <div className="border-b border-hairline px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2"><h1 className="text-lg font-semibold tracking-tight">信号库</h1><Button size="xs" onClick={download}><Download className="h-3.5 w-3.5" />导出</Button></div>
-        <p className="mt-0.5 text-[13px] text-steel">共 {SIGNALS.length} 项指标，已接入 {live} 项。每项都能开关，点进去看解释、选提醒档位。</p>
+        <p className="mt-0.5 text-[13px] text-steel">共 {SIGNALS.length} 项指标，已接入 {live} 项。名称、定义和标准与《异动监测信息集》一致。每项都能开关，点进去选提醒档位。</p>
         <p className="mb-1 mt-3 text-xs text-steel">默认档位</p>
         <div className="flex gap-0.5 rounded-md border border-hairline-strong p-0.5" role="group" aria-label="默认提醒档位">
           {TIERS.map((t) => (
@@ -131,7 +131,11 @@ function Detail({ s, e, onBack }: { s: SignalDef; e: SignalEval; lessons: number
         <label className="flex shrink-0 items-center gap-2 text-[13px] text-slate">{off ? '已关闭' : '提醒我'}<Switch on={!off} label={`用「${s.name}」提醒我`} onChange={() => setRules({ ...rules, off: toggled(rules, s.id) }, `${off ? '重新打开' : '关掉'}了指标「${s.name}」`)} /></label>
       </div>
       <p className="mt-2 text-[15px] leading-relaxed text-charcoal">{s.intro}</p>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-steel"><span className="mr-1.5 text-stone">可能的影响</span>{c.impact}</p>
+      <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm text-charcoal">
+        <dt className="text-steel">怎么衡量</dt><dd>{s.measure}</dd>
+        <dt className="text-steel">异动标准</dt><dd>{s.standard}<span className="ml-1.5 text-xs text-stone">平衡档</span></dd>
+        <dt className="text-steel">可能的影响</dt><dd className="text-slate">{c.impact}</dd>
+      </dl>
 
       <Block title="什么时候提醒我 · 三档可选" className="mt-5">
         <div className="grid grid-cols-[minmax(0,1fr)] gap-2 @min-[720px]:grid-cols-3" role="group" aria-label={`${s.name}的提醒档位`}>
@@ -139,7 +143,7 @@ function Detail({ s, e, onBack }: { s: SignalDef; e: SignalEval; lessons: number
             <button key={t} type="button" aria-pressed={tier === t} onClick={() => setTier(t)}
               className={cn('rounded-lg border px-3.5 py-3 text-left transition-colors', tier === t ? 'border-primary bg-tint-lavender' : 'border-hairline hover:bg-surface-soft')}>
               <span className="flex items-baseline gap-2 text-sm font-semibold">{TIER_LABEL[t]}<span className="text-xs font-normal text-steel">{TIER_HINT[t]}</span>{tier === t ? <span className="ml-auto text-xs font-normal text-on-lavender">{own ? '已选' : '跟随默认'}</span> : null}</span>
-              <span className="mt-1.5 block text-[13px] leading-relaxed text-charcoal">{c[t]}</span>
+              <span className="mt-1.5 block text-[13px] leading-relaxed text-charcoal">{t === 'balanced' ? s.standard : c[t]}</span>
             </button>
           ))}
         </div>

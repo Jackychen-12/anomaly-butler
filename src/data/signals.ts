@@ -4,6 +4,7 @@
  * 每项有三档提醒门槛（稳健 / 平衡 / 进取）和一套不随偏好变的固定等级（S1–S3）。
  */
 import raw from './indicators.json'
+import infoset from './infoset.json'
 import type { Market } from './case'
 
 export type Tier = 'steady' | 'balanced' | 'aggressive'
@@ -16,8 +17,11 @@ export type SignalDef = {
   id: string
   group: SignalGroup
   name: string
-  /** 一句大白话：这项指标在看什么 */
+  /** 定义：它是什么。和提交的《异动监测信息集》「指标一览」同一句话 */
   intro: string
+  /** 怎么衡量、异动标准（平衡档）：同样取自信息集 */
+  measure: string
+  standard: string
   /** 可能的影响（不是涨跌预测） */
   define: string
   source: string
@@ -89,10 +93,13 @@ const INTRO: Record<string, string> = {
   U02: '你当初买入的理由还在不在，以及你自己设的提醒门槛。',
 }
 
+/** 提交的《异动监测信息集》里每项的定义、衡量方式和平衡档标准（src/data/infoset.json 由那份 Excel 的「指标一览」导出），平台上显示的就是这几句 */
+const INFO = infoset as Record<string, { define: string; measure: string; standard: string; status: string }>
+
 export const SIGNALS: SignalDef[] = (raw as { indicators: Spec[] }).indicators.map((s) => {
   const live = LIVE[s.id], event = EVENT.includes(s.id) || s.id === 'I03'
   return {
-    id: s.id, group: GROUP[s.id[0]], name: s.name, intro: INTRO[s.id] ?? s.impact, define: s.impact, source: s.source, rule: s.balanced, markets: ['A', 'HK', 'US'],
+    id: s.id, group: GROUP[s.id[0]], name: s.name, intro: INFO[s.id]?.define ?? INTRO[s.id] ?? s.impact, measure: INFO[s.id]?.measure ?? s.formula, standard: INFO[s.id]?.standard ?? s.balanced, define: s.impact, source: s.source, rule: s.balanced, markets: ['A', 'HK', 'US'],
     kind: live ? 'rule' : event ? 'event' : 'planned',
     judges: s.id === 'P10' || EVENT.includes(s.id),
     dir: live ?? (s.id === 'I03' ? 'both' : undefined),

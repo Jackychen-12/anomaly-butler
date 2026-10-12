@@ -42,7 +42,7 @@ export function TodayPage() {
     : '早上好。今天自选股上很平静，没有新的事需要你看。'
   // 接了大模型时，开场白由它根据今天归并出的这几件事来写；没接或没写出来时用上面那句
   const material = JSON.stringify({ 日期: `${fmtDate(tick)}开盘前`, 信号数: dg.signals, 需要看的事: dg.need.map((t) => ({ 等级: t.level, 事: t.cause?.title ?? '行情指标异动，没找到对应事件', 说明: t.cause?.chain.map((c) => c.text), 涉及: [...new Set([...(t.cause?.hits ?? []), ...t.reactions.flatMap((r) => r.hits)])].map((c) => `${stockOf(c).name}（上一交易日 ${signed(changeOver(c, tick, 1))}%${holdings[c] ? `，占持仓 ${Math.round(holdings[c] * 100)}%` : ''}）`), 行情反应: t.reactions.flatMap((r) => r.indicators?.map((h) => `${stockOf(r.hits[0]).name}${h.label}`) ?? [r.title]) })), 在等结果的判断: js.filter((j) => j.status === 'pending').map((j) => j.text) })
-  const brief = useGenerated(llm, 'brief', `${GROUND}写今天开盘前的一段开场白，3 句以内：先说今天最该看的一件事和它为什么和用户有关（点到他仓位最重的那只），再用一句带过其余的。以「早上好。」开头。`, material, 220)
+  const brief = useGenerated(llm, 'brief', `${GROUND}写今天开盘前的一段开场白，3 句以内：先说今天最该看的一件事和它为什么和用户有关（点到这件事涉及的股票里他持仓占比最高的那只，并照抄资料里的占比；不要说成他全部持仓里最重的），再用一句带过其余的。以「早上好。」开头。`, material, 220)
   const rail = wide ? <AskPanel tips={tips} headline={brief.text ?? headline} headlineBy={brief.text ? `${llmName(llm)} 根据今天的 ${dg.things.length} 件事写的` : brief.loading ? '正在让模型写今天的开场白…' : undefined} /> : null
   // 默认只展开最重要的；窄屏上只展开第一件
   const openByDefault = (t: Thing) => t.level !== '低' && (wide || t === dg.things[0])
