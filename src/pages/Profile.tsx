@@ -99,7 +99,7 @@ export function ProfileTab() {
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-x-10 rounded-lg border border-hairline px-4 @min-[1000px]:grid-cols-2 [&>div]:border-b [&>div]:border-hairline-soft [&>div:last-child]:border-b-0">
             <Choice label="一只股票，最多能接受跌多少" use="每条看跌判断旁边的对照说明；调仓时的提示" options={PCT.map((v) => ({ v, label: `−${v}%` }))} picked={(v) => profile.tolerance === v} onPick={(v) => set({ tolerance: v }, `能接受的最大跌幅设为 ${v}%`)} />
             <Choice label="一般拿多久" use="异动的等级——长线少提醒短期的行情波动，短线多提醒" options={opts(HORIZON_LABEL)} picked={(v) => profile.horizon === v} onPick={(v, l) => set({ horizon: v }, `持有周期设为${l}`)} />
-            <Choice label="遇到大跌，通常怎么做" use="判断第四步里，标出更接近你的做法；选得不一样时提醒一句" options={opts(REACTION_LABEL)} picked={(v) => profile.reaction === v} onPick={(v, l) => set({ reaction: v }, `遇到大跌的习惯设为：${l}`)} />
+            <Choice label="遇到大跌，通常怎么做" use="自选里定仓位做法时，标出更接近你的那一种；选得不一样时提醒一句" options={opts(REACTION_LABEL)} picked={(v) => profile.reaction === v} onPick={(v, l) => set({ reaction: v }, `遇到大跌的习惯设为：${l}`)} />
             <Choice label="一只股票，最多放多少仓位" use="持仓超过上限时主动提醒" options={PCT.map((v) => ({ v, label: `${v}%` }))} picked={(v) => profile.maxWeight === v} onPick={(v) => set({ maxWeight: v }, `单只股票的仓位上限设为 ${v}%`)} />
             <Choice label="这笔钱的目标" use="和上面两项一起，决定你的风险类型（保守、稳健、积极）" options={opts(GOAL_LABEL)} picked={(v) => profile.goal === v} onPick={(v, l) => set({ goal: v }, `投资目标设为：${l}`)} />
             <Choice label="做决定时主要看什么（可多选）" use="异动的等级——你看重的那几类上调，其余略下调" options={opts(FOCUS_LABEL)} picked={(v) => profile.focus.includes(v)}
@@ -120,7 +120,7 @@ export function ProfileTab() {
                   <Button type="submit" disabled={!rule.trim()}>加上</Button>
                 </form>
               ) : null}
-              <p className="mt-1.5 text-xs text-steel">用在：判断第四步做选择时，摆在旁边给你对照</p>
+              <p className="mt-1.5 text-xs text-steel">用在：问管家问题时它会参考；也记在长期记忆里</p>
             </div>
         </div>
       </section>

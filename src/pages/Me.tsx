@@ -40,6 +40,26 @@ export function MePage() {
 }
 
 // ── 持仓 ────────────────────────────────────────────────
+/** 仓位分布：一条横条，每只股票一段，最后是现金。段与段之间留缝，最重的几只直接标名字 */
+function Allocation({ nums }: { nums: Record<string, number> }) {
+  const parts = STOCKS.map((s) => ({ name: s.name.replace('-W', ''), w: nums[s.code] })).filter((p) => p.w > 0).sort((a, b) => b.w - a.w)
+  const cash = Math.max(0, 1 - parts.reduce((a, p) => a + p.w, 0))
+  const tones = ['bg-ink', 'bg-charcoal', 'bg-slate', 'bg-steel', 'bg-stone', 'bg-hairline-strong']
+  return (
+    <div className="mt-3" role="img" aria-label={`仓位分布：${parts.map((p) => `${p.name} ${Math.round(p.w * 100)}%`).join('，')}，现金 ${Math.round(cash * 100)}%`}>
+      <div className="flex h-3 gap-0.5 overflow-hidden rounded-full">
+        {parts.map((p, i) => <span key={p.name} title={`${p.name} ${Math.round(p.w * 100)}%`} className={cn('h-full', tones[Math.min(i, tones.length - 1)])} style={{ flexGrow: p.w }} />)}
+        {cash > 0 ? <span title={`现金及其他 ${Math.round(cash * 100)}%`} className="h-full bg-surface [background-image:repeating-linear-gradient(135deg,transparent_0_3px,var(--hairline-strong)_3px_4px)]" style={{ flexGrow: cash }} /> : null}
+      </div>
+      <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-steel">
+        {parts.slice(0, 4).map((p, i) => <span key={p.name} className="flex items-center gap-1"><span className={cn('h-2 w-2 rounded-xs', tones[i])} />{p.name} <b className="font-medium tabular-nums text-ink">{Math.round(p.w * 100)}%</b></span>)}
+        {parts.length > 4 ? <span>其余 {parts.length - 4} 只 {Math.round(parts.slice(4).reduce((a, p) => a + p.w, 0) * 100)}%</span> : null}
+        <span>现金 {Math.round(cash * 100)}%</span>
+      </p>
+    </div>
+  )
+}
+
 function Holdings() {
   const { holdings, setHoldings, hasHoldings, tick, gradeOf, openStock } = useStore()
   const toDraft = (h: Record<string, number>) => Object.fromEntries(STOCKS.map((s) => [s.code, h[s.code] ? String(Math.round(h[s.code] * 100)) : '']))
@@ -59,6 +79,7 @@ function Holdings() {
       <section className="mt-5 min-w-0">
         <h2 className="text-base font-semibold">我的持仓</h2>
         <p className="mt-0.5 text-[13px] text-steel">可以不填。填了之后按你的仓位排提醒，并给出调仓做法。只存在你的浏览器里。</p>
+        {sum > 0 ? <Allocation nums={nums} /> : null}
         <div className="mt-3 overflow-x-auto rounded-lg border border-hairline">
           <table className="w-full border-collapse text-sm">
             <thead><tr className="text-left text-xs text-steel [&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-hairline [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium"><th>股票</th><th className="w-[96px]">占总资产</th><th>管家的判断</th></tr></thead>
@@ -98,7 +119,7 @@ function Holdings() {
             <ul className="mt-3 overflow-hidden rounded-lg border border-hairline">
               {targets.map((t) => (
                 <li key={t.id} className="border-b border-hairline-soft last:border-b-0">
-                  <button type="button" onClick={() => openStock(t.code)} className="grid w-full grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-3.5 py-2.5 text-left hover:bg-surface-soft">
+                  <button type="button" onClick={() => openStock(t.code)} className="grid w-full grid-cols-[minmax(0,1fr)_230px] items-center gap-4 max-sm:grid-cols-[minmax(0,1fr)] px-3.5 py-2.5 text-left hover:bg-surface-soft">
                     <span className="min-w-0"><span className="block truncate text-sm font-medium">{stockOf(t.code).name} <span className="font-normal text-steel">仓位 {Math.round((holdings[t.code] ?? 0) * 100)}%</span></span><span className="block truncate text-xs text-steel">{t.anomaly.title}</span></span>
                     <JudgmentMeter j={t} />
                   </button>

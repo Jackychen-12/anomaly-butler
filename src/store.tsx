@@ -125,9 +125,13 @@ function load(tick: string): Saved {
   } catch { return fresh(tick) }
 }
 const pageFromHash = (): Page => {
-  const h = location.hash.replace('#/', '') as Page
+  const h = location.hash.replace('#/', '').split('/')[0] as Page
   return PAGES.includes(h) ? h : 'today'
 }
+const hashArg = (): string | undefined => location.hash.replace('#/', '').split('/')[1] || undefined
+/** 「我的」的子页也写进网址（#/me/memory），可以直接打开某一页 */
+const ME_TABS: MeTab[] = ['settings', 'plan', 'profile', 'holdings', 'memory']
+const meTabFromHash = (): MeTab => { const t = location.hash.replace('#/', '').split('/')[1] as MeTab; return ME_TABS.includes(t) ? t : 'settings' }
 /** 默认用 TODAY；网址带 ?date= 且是演示数据里的交易日时用它（汇报时换一天验证用） */
 function initialTick() {
   const d = new URLSearchParams(location.search).get('date')
@@ -141,14 +145,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // 引擎按当前规则识别异动；放在渲染里同步应用，保证下面的页面读到的是新规则的结果
   configure(saved.rules)
   const [page, setPageState] = useState<Page>(pageFromHash)
-  const [meTab, setMeTab] = useState<MeTab>('settings')
-  const [code, setCode] = useState<string | null>(null)
+  const [meTab, setMeTab] = useState<MeTab>(meTabFromHash)
+  const [code, setCode] = useState<string | null>(() => (pageFromHash() === 'watch' ? STOCKS.find((s) => s.code === hashArg())?.code ?? null : null))
   const [chat, setChat] = useState<ChatMsg[]>([])
-  const [reviewId, setReviewId] = useState<string | null>(null)
+  const [reviewId, setReviewId] = useState<string | null>(() => (pageFromHash() === 'review' ? hashArg() ?? null : null))
 
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(saved)) } catch { /* 存不了就只在本次生效 */ } }, [saved])
   useEffect(() => {
-    const onHash = () => setPageState(pageFromHash())
+    const onHash = () => { setPageState(pageFromHash()); if (pageFromHash() === 'me') setMeTab(meTabFromHash()) }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -168,7 +172,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...saved,
     tick, prevTick: TICKS[i - 1],
     page, setPage,
-    meTab, openMe: (t) => { setMeTab(t); setPage('me') },
+    meTab, openMe: (t) => { setMeTab(t); location.hash = `#/me/${t}`; setPageState('me') },
     code, setCode,
     chat, setChat,
     openStock: (c) => { setCode(c); setPage('watch') },
