@@ -1,9 +1,11 @@
-/** 自选页：行情列表是底，异动标在命中的那一行上。PC 三栏，手机先列表、点开看详情。 */
+/** 自选页：左边是行情列表，异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
 import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { MARKET_LABEL, STOCKS, type Market, type Stock } from '../data/case'
-import { anomaliesOf, fmtDate, grade, isFresh, judgmentsOf, lastBar, type Anomaly, type Grade, type Judgment } from '../engine'
+import { anomaliesOf, fmtDate, grade, isFresh, judgmentsOf, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
 import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
 import { AnomalyBody, GradeBox, JudgmentCard, PriceChart } from '../parts'
+import { Split, useIsDesktop } from '../layout'
 import { useStore } from '../store'
 
 type Row = { s: Stock; fresh: { a: Anomaly; g: Grade }[]; pending: Judgment[]; top: number }
@@ -27,13 +29,7 @@ export function WatchPage() {
   const { code, setCode } = useStore()
   const rows = useRows()
   const [filter, setFilter] = useState<Filter>('all')
-  const [desktop, setDesktop] = useState(() => window.matchMedia('(min-width: 1024px)').matches)
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const on = () => setDesktop(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const desktop = useIsDesktop()
 
   const alertCount = rows.filter((r) => r.fresh.length).length
   const shown = rows.filter((r) => filter === 'all' || (filter === 'alert' ? r.fresh.length > 0 : r.s.market === filter))
@@ -42,34 +38,32 @@ export function WatchPage() {
   const current = code ?? (desktop ? [...rows].sort((a, b) => b.top - a.top)[0].s.code : null)
 
   const list = (
-    <div className="flex min-h-0 flex-col lg:border-r lg:border-hairline">
-      <div className="flex items-center gap-0.5 px-3 pb-1.5 pt-3">
+    <>
+      <div className="px-4 pb-1 pt-4">
+        <h1 className="text-lg font-semibold tracking-tight">自选</h1>
+        <p className="mt-0.5 text-[13px] text-steel">{rows.length} 只 · A股、港股、美股。有异动的排在前面。</p>
+      </div>
+      <div className="flex items-center gap-0.5 px-3 pb-1.5 pt-1.5">
         {(['all', 'A', 'HK', 'US'] as Filter[]).map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)} aria-pressed={filter === f}
             className={cn('h-7 rounded-sm px-2.5 text-[13px] text-slate hover:bg-hover', filter === f && 'bg-hover font-medium text-ink')}>
-            {f === 'all' ? `全部 ${rows.length}` : MARKET_LABEL[f as Market]}
+            {f === 'all' ? '全部' : MARKET_LABEL[f as Market]}
           </button>
         ))}
         <button type="button" onClick={() => setFilter(filter === 'alert' ? 'all' : 'alert')} aria-pressed={filter === 'alert'}
-          className={cn('ml-auto h-7 rounded-sm px-2.5 text-[13px] text-on-rose hover:bg-tint-rose', filter === 'alert' && 'bg-tint-rose font-medium')}>今天有新异动 {alertCount}</button>
+          className={cn('ml-auto h-7 rounded-sm px-2.5 text-[13px] text-on-rose hover:bg-tint-rose', filter === 'alert' && 'bg-tint-rose font-medium')}>新异动 {alertCount}</button>
       </div>
       <div className="grid grid-cols-[1fr_76px_72px] border-b border-hairline px-4 py-1 text-xs text-steel">
         <span>名称</span><span className="text-right">昨收</span><span className="text-right">涨跌</span>
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto">
+      <ul className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {shown.map((r) => <StockRow key={r.s.code} r={r} selected={current === r.s.code} onPick={() => setCode(r.s.code)} />)}
-        {shown.length === 0 ? <li className="px-4 py-8 text-sm text-steel">这一刻没有新异动。点上方的「下一天」往后看。</li> : null}
+        {shown.length === 0 ? <li className="px-4 py-8 text-sm text-steel">今天没有新异动。</li> : null}
       </ul>
-    </div>
+    </>
   )
 
-  if (!desktop) return current ? <Detail code={current} onBack={() => setCode(null)} /> : list
-  return (
-    <div className="grid h-full grid-cols-[372px_1fr]">
-      {list}
-      <div className="min-h-0 overflow-y-auto">{current ? <Detail code={current} /> : null}</div>
-    </div>
-  )
+  return <Split list={list} showDetail={!!current} detail={current ? <Detail code={current} onBack={desktop ? undefined : () => setCode(null)} /> : null} />
 }
 
 function StockRow({ r, selected, onPick }: { r: Row; selected: boolean; onPick: () => void }) {
@@ -101,25 +95,28 @@ function StockRow({ r, selected, onPick }: { r: Row; selected: boolean; onPick: 
 }
 
 function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
-  const { tick, prevTick, prefs, setPage, weightOf, hasHoldings, openMe } = useStore()
+  const { tick, prevTick, prefs, weightOf, hasHoldings, openMe, openReview } = useStore()
   const w = weightOf(code)
   const s = STOCKS.find((x) => x.code === code)!
   const bar = lastBar(code, tick)
   const anomalies = anomaliesOf(code, tick)
   const judgments = judgmentsOf(code, tick)
   const [openId, setOpenId] = useState<string | null>(null)
-  // 默认展开最新的一条；换股票或拨动时间后重新选
-  useEffect(() => setOpenId(null), [code, tick])
+  // 默认展开最新的一条；换股票后重新选
+  useEffect(() => setOpenId(null), [code])
   const open = anomalies.find((a) => a.id === openId) ?? anomalies[0]
-  const focus = judgments.find((j) => j.anomaly.id === open?.id) ?? judgments.find((j) => j.status === 'pending') ?? judgments[0]
+  // 选中的这条异动里，管家针对这只股票的判断（可能没有：判断落在别的股票上，或者这条异动不出判断）
+  const focus = judgments.find((j) => j.anomaly.id === open?.id)
+  const others = judgments.filter((j) => j.id !== focus?.id)
+  const elsewhere = open ? open.judgments.filter((d) => d.code !== code).map((d) => stockOf(d.code).name) : []
   const freshHigh = anomalies.filter((a) => isFresh(a, tick, prevTick)).length
 
   return (
-    <div className="grid gap-0 xl:grid-cols-[1fr_340px]">
-      <section className="min-w-0 px-4 py-4 lg:px-6">
-        {onBack ? <Button size="xs" variant="ghost" className="-ml-2 mb-2" onClick={onBack}>← 自选</Button> : null}
+    <div className="grid min-h-full grid-cols-[minmax(0,1fr)] gap-0 @min-[860px]:grid-cols-[minmax(0,1fr)_348px]">
+      <section className="min-w-0 px-4 py-4 lg:px-6 lg:py-5">
+        {onBack ? <button type="button" onClick={onBack} className="-ml-1 mb-2 flex h-8 items-center gap-1 rounded-sm px-1 text-[13px] text-slate hover:bg-hover"><ArrowLeft className="h-4 w-4" />自选</button> : null}
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-[22px] font-semibold tracking-tight">{s.name}</h1>
+          <h2 className="text-[22px] font-semibold tracking-tight">{s.name}</h2>
           <span className="font-mono text-[13px] text-steel">{s.symbol}</span>
           <span className="text-lg font-semibold tabular-nums">{bar.c.toFixed(2)}</span>
           <PctPill v={bar.p} />
@@ -131,10 +128,10 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
             <span>近 40 个交易日收盘价</span>
             <span className="ml-auto"><span className="text-warning">▼</span> 出现异动的日子</span>
           </div>
-          <PriceChart code={code} anomalies={anomalies} judgment={focus} />
+          <PriceChart code={code} anomalies={anomalies} judgment={focus ?? judgments.find((j) => j.status === 'pending')} />
         </div>
 
-        <h2 className="eyebrow mb-1 mt-5">到现在为止的异动 · {anomalies.length} 条（点开看原因和证据）</h2>
+        <h3 className="eyebrow mb-1 mt-5">到现在为止的异动 · {anomalies.length} 条（点开看原因和证据）</h3>
         {anomalies.length === 0 ? <p className="rounded-lg bg-surface-soft px-4 py-6 text-sm text-steel">到这一刻为止没有异动。</p> : null}
         <ul>
           {anomalies.map((a) => {
@@ -160,7 +157,7 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
         </ul>
       </section>
 
-      <aside className="border-t border-hairline bg-surface-soft px-4 py-4 xl:min-h-full xl:border-l xl:border-t-0">
+      <aside className="border-t border-hairline bg-surface-soft px-4 py-4 @min-[860px]:border-l @min-[860px]:border-t-0">
         {open ? (
           <>
             <p className="eyebrow mb-2">这条异动有多重要</p>
@@ -168,8 +165,28 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
           </>
         ) : null}
         <p className="eyebrow mb-2 mt-5">管家怎么看</p>
-        {focus ? <JudgmentCard j={focus} /> : <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-4 text-[13px] text-steel">{open?.tone === 'relief' ? '这是缓解风险的消息，管家只提醒，不做涨跌判断。' : '影响还不够明确，管家先记下来，不做判断。'}</p>}
-        {judgments.length > 1 ? <button type="button" onClick={() => setPage('review')} className="mt-2 text-[13px] text-link hover:underline">这只股票共有 {judgments.length} 条判断，去复盘页查看 →</button> : null}
+        {focus ? <JudgmentCard j={focus} /> : (
+          <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-4 text-[13px] text-steel">
+            {open?.tone === 'relief' ? '这是缓解风险的消息，管家只提醒，不做涨跌判断。'
+              : elsewhere.length ? `这件事上，管家的判断落在${elsewhere.join('、')}上，没有单独对${s.name}做判断。`
+              : '影响还不够明确，管家先记下来，不做判断。'}
+          </p>
+        )}
+        {others.length ? (
+          <>
+            <p className="eyebrow mb-2 mt-5">这只股票的其他判断 · {others.length} 条</p>
+            <ul className="overflow-hidden rounded-lg border border-hairline bg-canvas">
+              {others.map((j) => (
+                <li key={j.id} className="border-b border-hairline-soft last:border-b-0">
+                  <button type="button" onClick={() => openReview(j.id)} className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[13px] hover:bg-surface-soft">
+                    <span className="min-w-0 flex-1 truncate">{j.anomaly.title}</span>
+                    <span className="shrink-0 text-xs text-steel">{j.status === 'pending' ? `${j.n - j.elapsed} 个交易日后对答案` : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
 
         <p className="eyebrow mb-2 mt-5">和我的持仓有什么关系</p>
         <div className="rounded-lg border border-dashed border-hairline-strong p-3.5 text-[13px] text-slate">

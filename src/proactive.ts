@@ -1,36 +1,36 @@
 /** 主动提示：管家根据记住的事（表态、偏好、持仓）和当天的数据，自己先开口。 */
 import { STOCKS, type Vote } from './data/case'
-import { anomaliesAt, isFresh, judgmentsAt, myResult, stockOf, type Judgment, type Pref } from './engine'
-import type { MeTab, Page } from './store'
+import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, type Pref } from './engine'
+import { unreviewed } from './review'
+import type { Link } from './assistant'
+import type { ReviewState } from './store'
 
-export type Nudge = { id: string; text: string; action?: { label: string; page?: Page; code?: string; me?: MeTab } }
-type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean }
+export type Nudge = { id: string; text: string; action?: Link }
+type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState> }
 
-/** 这一格刚有结果的判断 */
-export function newlySettled(tick: string, prevTick?: string): Judgment[] {
-  if (!prevTick) return []
-  const before = new Map(judgmentsAt(prevTick).map((j) => [j.id, j.status]))
-  return judgmentsAt(tick).filter((j) => j.status !== 'pending' && before.get(j.id) === 'pending')
-}
-
-export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings }: Ctx): Nudge[] {
+export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState }: Ctx): Nudge[] {
   const out: Nudge[] = []
   const js = judgmentsAt(tick)
   const fresh = anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick))
+  const recent = recentlySettled(tick)
 
-  // 持仓股被说中了：事后应对
-  for (const j of newlySettled(tick, prevTick)) if (j.status === 'hit' && (holdings[j.code] ?? 0) > 0)
-    out.push({ id: `held-${j.id}`, text: `${stockOf(j.code).name}占你持仓的 ${Math.round(holdings[j.code] * 100)}%，它已经跌破了管家说的价格。可以看看接下来有哪些选择。`, action: { label: '看应对方案', me: 'holdings' } })
+  // 有结果但还没复盘：对答案之后要总结经验
+  const todo = unreviewed(js, reviewState)
+  if (todo.length) out.push({ id: 'review', text: `有 ${todo.length} 条判断出了结果还没复盘。我们一起看看为什么对、为什么错，把经验记下来。`, action: { label: '开始复盘', review: todo[0].id } })
+
+  // 持仓股被说中了：事后应对（合成一条）
+  const heldHit = recent.filter((j) => j.status === 'hit' && (holdings[j.code] ?? 0) > 0)
+  if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}最近跌破了管家说的价格。可以看看接下来有哪些选择。`, action: { label: '看应对方案', me: 'holdings' } })
   // 我表过态的判断有结果了（合成一条，细节在下面的「有结果了」里）
-  const mine = newlySettled(tick, prevTick).map((j) => ({ j, r: myResult(j, votes[j.id]) })).filter((x) => x.r != null)
+  const mine = recent.map((j) => ({ j, r: myResult(j, votes[j.id]) })).filter((x) => x.r != null)
   if (mine.length === 1) {
     const { j, r } = mine[0]
-    out.push({ id: `settled-${j.id}`, text: `你${votes[j.id] === 'agree' ? '同意' : '不同意'}的那条${stockOf(j.code).name}判断有结果了：管家${j.status === 'hit' ? '说对了' : '说错了'}，你${r ? '看对了' : '看错了'}。`, action: { label: '看复盘', page: 'review' } })
+    out.push({ id: `settled-${j.id}`, text: `你${votes[j.id] === 'agree' ? '同意' : '不同意'}的那条${stockOf(j.code).name}判断有结果了：管家${j.status === 'hit' ? '说对了' : '说错了'}，你${r ? '看对了' : '看错了'}。`, action: { label: '去复盘', page: 'review' } })
   } else if (mine.length > 1) {
     const right = mine.filter((x) => x.r).length
-    out.push({ id: 'settled', text: `你表过态的 ${mine.length} 条判断有结果了：你看对 ${right} 条，看错 ${mine.length - right} 条。`, action: { label: '看复盘', page: 'review' } })
+    out.push({ id: 'settled', text: `你表过态的判断最近有 ${mine.length} 条出了结果：你看对 ${right} 条，看错 ${mine.length - right} 条。`, action: { label: '去复盘', page: 'review' } })
   }
-  // 我不同意的判断明天对答案
+  // 我不同意的判断快要对答案了
   for (const j of js) if (j.status === 'pending' && votes[j.id] === 'disagree' && j.n - j.elapsed <= 1)
     out.push({ id: `due-${j.id}`, text: `你不同意的那条${stockOf(j.code).name}判断，还有 ${j.n - j.elapsed} 个交易日对答案。`, action: { label: '看这只股票', code: j.code } })
   // 设了「多提醒我」的股票今天有新异动
