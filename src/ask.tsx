@@ -2,6 +2,7 @@
  * 和管家对话的面板。PC 上是今日页的右侧栏，手机上从底部输入条弹出。对话存在全局状态里，换页面不丢。
  * 面板从上到下：管家是谁、记着什么 → 管家先开口（问候 + 主动提醒）→ 可以直接点的问题 → 对话 → 输入框。
  */
+import { signalOf, TIER_LABEL } from './data/signals'
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ArrowUp, ChevronRight, RotateCcw } from 'lucide-react'
 import { answerLocal, askLlm, starters, type Answer, type Link } from './assistant'
@@ -13,7 +14,7 @@ import { useStore } from './store'
 
 export function useGo() {
   const st = useStore()
-  return (l: Link) => { if (l.review) st.openReview(l.review); else if (l.code) st.openStock(l.code); else if (l.me) st.openMe(l.me); else if (l.page) st.setPage(l.page) }
+  return (l: Link) => { if (l.tier) { const sig = signalOf(l.tier.id); st.setRules({ ...st.rules, tiers: { ...st.rules.tiers, [l.tier.id]: l.tier.to } }, `按管家的提议，把「${sig?.name}」的提醒档位调到${TIER_LABEL[l.tier.to]}`); st.setPage('signals') } else if (l.review) st.openReview(l.review); else if (l.code) st.openStock(l.code); else if (l.me) st.openMe(l.me); else if (l.page) st.setPage(l.page) }
 }
 
 const Avatar = () => <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-ink text-[11px] font-semibold text-canvas">异</span>

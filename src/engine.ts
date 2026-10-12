@@ -213,7 +213,7 @@ export type Pref = 'focus' | 'normal' | 'mute'
 export const PREF_LABEL: Record<Pref, string> = { focus: '多提醒我', normal: '正常', mute: '少提醒我' }
 const PREF_FACTOR: Record<Pref, number> = { focus: 1.25, normal: 1, mute: 0.6 }
 export type Level = '高' | '中' | '低'
-export type Grade = { score: number; level: Level; strength: number; weightFactor: number | null; prefFactor: number; styleFactor: number }
+export type Grade = { score: number; level: Level; strength: number; weightFactor: number | null; prefFactor: number; styleFactor: number; /** 本来是高，因为当天更重要的事已经够多而降到中 */ capped?: boolean }
 
 /**
  * weight 传 null 表示用户还没补充持仓，此时持仓不参与（系数 1）；补充后重仓放大、未持仓缩小。
@@ -233,6 +233,7 @@ export function gradeReason(g: Grade): string {
   if (g.prefFactor < 1) parts.push('你要求少提醒')
   if (g.styleFactor > 1) parts.push('按你的画像上调')
   if (g.styleFactor < 1) parts.push('按你的画像下调')
+  if (g.capped) parts.push('今天有更重要的事，这条排在后面')
   return parts.join('，')
 }
 

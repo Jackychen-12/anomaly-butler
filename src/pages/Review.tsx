@@ -7,6 +7,7 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowLeft, ArrowUp, Check } from 'lucide-react'
 import { signalOf } from '../data/signals'
+import { storyOf } from '../digest'
 import { JudgmentMeter } from '../charts'
 import { evalLine, fmtDate, judgmentsAt, myResult, reviewBySignal, score, signed, stockOf, type Judgment } from '../engine'
 import { Button, cn, Stamp, Tag } from '../kit'
@@ -36,6 +37,8 @@ export function ReviewPage() {
   const current = js.find((j) => j.id === reviewId) ?? fallback
   useEffect(() => { if (!reviewId && fallback) setReviewId(fallback.id) }, [reviewId, fallback, setReviewId])
   const bySignal = reviewBySignal(tick)
+  const settledJs = js.filter((j) => j.status === 'hit' || j.status === 'miss'), settledN = settledJs.length
+  const stories = new Set(settledJs.map((j) => storyOf(j.anomaly))).size
   const FILTERS: [Filter, string, number][] = [['all', '全部', js.length], ['todo', '待复盘', todo.length], ['waiting', '在等结果', waiting.length], ['done', '已复盘', done.length]]
 
   const list = (
@@ -43,10 +46,11 @@ export function ReviewPage() {
       <div className="border-b border-hairline px-4 pb-3 pt-4">
         <h1 className="text-lg font-semibold tracking-tight">判断</h1>
         <p className="mt-0.5 text-[13px] text-steel">按判断看：管家说得准不准，我看得对不对。</p>
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
-          <dt className="text-steel">管家</dt><dd className="tabular-nums"><b className="font-semibold">{sc.butler.hit}</b> 说对 · <b className="font-semibold">{sc.butler.miss}</b> 说错 · {sc.butler.void} 作废</dd>
-          <dt className="text-steel">我</dt><dd className="tabular-nums"><b className="font-semibold">{sc.me.right}</b> 看对 · <b className="font-semibold">{sc.me.wrong}</b> 看错{sc.split.butler + sc.split.me ? ` · 意见不同时 管家 ${sc.split.butler}：我 ${sc.split.me}` : ''}</dd>
-        </dl>
+        <div className="mt-3 flex flex-col gap-2">
+          <Tally who="管家" parts={[{ n: sc.butler.hit, label: '说对', tone: 'bg-ink' }, { n: sc.butler.miss, label: '说错', tone: 'bg-stone' }, { n: sc.butler.void, label: '作废', tone: 'bg-hairline-strong' }]} />
+          <Tally who="我" parts={[{ n: sc.me.right, label: '看对', tone: 'bg-primary' }, { n: sc.me.wrong, label: '看错', tone: 'bg-stone' }]} empty="还没有表过态的判断出结果" />
+        </div>
+        <p className="mt-2 text-xs text-steel">有结果的 {settledN} 条判断来自 {stories} 件独立的事，同一件事上的几条往往同对同错。{sc.split.butler + sc.split.me ? `意见不同时 管家 ${sc.split.butler}：我 ${sc.split.me}。` : ''}</p>
       </div>
       <div className="flex flex-wrap gap-0.5 px-3 pb-1.5 pt-2.5">
         {FILTERS.map(([k, label, n]) => (
@@ -76,6 +80,22 @@ export function ReviewPage() {
   )
 
   return <Split list={list} showDetail={!!current} detail={current ? <Flow key={current.id} j={current} onBack={desktop ? undefined : () => setReviewId(null)} /> : <p className="p-6 text-sm text-steel">还没有判断。</p>} />
+}
+
+/** 战绩条：一行一方，按数量分段 */
+function Tally({ who, parts, empty }: { who: string; parts: { n: number; label: string; tone: string }[]; empty?: string }) {
+  const total = parts.reduce((a, p) => a + p.n, 0)
+  return (
+    <div className="grid grid-cols-[32px_minmax(0,1fr)] items-center gap-x-2 text-[13px]">
+      <span className="text-steel">{who}</span>
+      {total ? (
+        <div>
+          <div className="flex h-2 gap-0.5 overflow-hidden rounded-full" role="img" aria-label={`${who}：${parts.map((p) => `${p.label} ${p.n}`).join('，')}`}>{parts.filter((p) => p.n).map((p) => <span key={p.label} className={cn('h-full', p.tone)} style={{ flexGrow: p.n }} />)}</div>
+          <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-steel">{parts.map((p) => <span key={p.label} className="tabular-nums"><b className="font-semibold text-ink">{p.n}</b> {p.label}</span>)}</p>
+        </div>
+      ) : <span className="text-xs text-steel">{empty}</span>}
+    </div>
+  )
 }
 
 function Row({ j, selected, onPick }: { j: Judgment; selected: boolean; onPick: () => void }) {
@@ -251,7 +271,8 @@ function Flow({ j, onBack }: { j: Judgment; onBack?: () => void }) {
         </Step>
 
         <Step n={3} title="你怎么看" done={!!v}>
-          <div className="flex flex-wrap items-center gap-1.5">
+          {!pending && !v ? <p className="text-sm text-steel">这条出结果前你没有表态，不计入你的战绩。</p> : null}
+          <div className={cn('flex flex-wrap items-center gap-1.5', !pending && !v && 'hidden')}>
             {(['agree', 'disagree', 'watch'] as Vote[]).map((k) => (
               <Button key={k} size="sm" variant={v === k ? 'primary' : 'secondary'} aria-pressed={v === k} disabled={!pending} onClick={() => vote(j.id, k, j.text, j.code)}>{VOTE_LABEL[k]}</Button>
             ))}

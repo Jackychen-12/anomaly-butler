@@ -2,13 +2,14 @@
  * 提问：默认用本地规则，根据当前的数据拼出回答，离线可用；
  * 在「我的 → 设置」里接入模型接口后，改由模型回答（见 askLlm）。
  */
+import type { Tier } from './data/signals'
 import { STOCKS, type Vote } from './data/case'
 import { anomaliesAt, anomaliesOf, fmtDate, isFresh, judgmentsAt, judgmentsOf, lastBar, score, signed, stockOf } from './engine'
 import { signalOf } from './data/signals'
 import type { Lesson, Llm, MeTab, Page } from './store'
 
 /** 回答或提示后面可点的去处：某个页面、某只股票、「我的」里的某一栏，或某条判断的复盘对话 */
-export type Link = { label: string; page?: Page; code?: string; me?: MeTab; review?: string }
+export type Link = { label: string; page?: Page; code?: string; me?: MeTab; review?: string; /** 点一下就把某项指标调到这个档位 */ tier?: { id: string; to: Tier } }
 /** stocks：回答里提到的股票，画成带涨跌的小标签；score：战绩，画成一条对错比例条 */
 export type Answer = { text: string[]; links: Link[]; stocks?: string[]; score?: { hit: number; miss: number; void: number } }
 export type AskCtx = { tick: string; prevTick?: string; votes: Record<string, Vote>; holdings: Record<string, number>; hasHoldings: boolean; lessons: Lesson[] }
@@ -45,7 +46,7 @@ function aboutToday(c: AskCtx): Answer {
     ? risk.map((a) => `${a.title}，影响到你的 ${a.hits.length} 只自选。`)
     : ['今天没有新的大事件。']
   const moved = fresh.filter((a) => a.auto)
-  if (moved.length) text.push(`另有 ${moved.length} 只自选的行情指标有异动。`)
+  if (moved.length) text.push(`行情上另有 ${moved.length} 条指标异动，能对上原因的已经并到首页对应的事下面。`)
   return { text, links: [], stocks: [...new Set(fresh.flatMap((a) => a.hits))].slice(0, 6) }
 }
 

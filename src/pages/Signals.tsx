@@ -95,6 +95,25 @@ export function SignalsPage() {
   return <Split list={list} showDetail={!!current && (desktop || !!sel)} detail={current ? <Detail key={current.id} s={current} e={evals[current.id]} lessons={lessons.filter((l) => l.signal === current.id).length} onBack={desktop ? undefined : () => setSel(null)} /> : null} />
 }
 
+/** 每次触发之后 5 个交易日的涨跌：一根一次，按时间排。高矮一眼能看出这项指标触发后是继续走还是反弹 */
+function FwdChart({ samples }: { samples: { code: string; d: string; p: number; fwd5: number }[] }) {
+  const list = [...samples].sort((a, b) => (a.d < b.d ? -1 : 1)).slice(-40)
+  const max = Math.max(5, ...list.map((x) => Math.abs(x.fwd5)))
+  return (
+    <div className="border-b border-hairline-soft px-4 pb-3 pt-3">
+      <p className="mb-2 flex flex-wrap items-center gap-x-3 text-xs text-steel"><span>每次触发之后 5 个交易日的涨跌</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-xs bg-up" />涨</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-xs bg-down" />跌</span><span className="ml-auto tabular-nums">±{max.toFixed(0)}%</span></p>
+      <div className="relative flex h-24 items-stretch gap-[3px]" role="img" aria-label={`${list.length} 次触发后 5 日涨跌的条形图`}>
+        <span aria-hidden="true" className="absolute inset-x-0 top-1/2 h-px bg-hairline-strong" />
+        {list.map((x) => (
+          <span key={x.code + x.d} title={`${stockOf(x.code).name} ${fmtDate(x.d)}：当日 ${signed(x.p)}%，5 日后 ${signed(x.fwd5)}%`} className="relative min-w-[3px] max-w-[18px] flex-1">
+            <span className={cn('absolute inset-x-0', x.fwd5 >= 0 ? 'bottom-1/2 rounded-t-[3px] bg-up' : 'top-1/2 rounded-b-[3px] bg-down')} style={{ height: `${Math.max(2, (Math.abs(x.fwd5) / max) * 50)}%` }} />
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Detail({ s, e, onBack }: { s: SignalDef; e: SignalEval; lessons: number; onBack?: () => void }) {
   const { tick, rules, setRules, lessons, openMe } = useStore()
   const c = s.spec
@@ -178,6 +197,7 @@ function Detail({ s, e, onBack }: { s: SignalDef; e: SignalEval; lessons: number
 
       {e?.kind === 'rule' && e.n ? (
         <Block title={`回测样本 · ${e.n} 个`} className="mt-5" flush>
+          <FwdChart samples={e.samples} />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[440px] border-collapse text-[13px]">
               <thead><tr className="text-left text-xs text-steel [&>th]:whitespace-nowrap [&>th]:px-4 [&>th]:py-2 [&>th]:font-medium"><th>股票</th><th>触发日</th><th className="text-right">当日涨跌</th><th className="text-right">之后 5 日同方向最远</th><th className="text-right">5 日后</th></tr></thead>

@@ -37,8 +37,7 @@ export function PathTree({ a, judged = [], focus, showEvent = true }: { a: Anoma
             {i === branches.length - 1 ? <span aria-hidden="true" className="absolute -left-px bottom-0 top-3.5 w-px bg-canvas" /> : null}
             <span aria-hidden="true" className="absolute left-0 top-3.5 h-px w-4 bg-hairline-strong" />
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <span className="min-w-0 text-sm text-charcoal">{b.via}</span>
-              <ArrowRight className="h-3.5 w-3.5 shrink-0 text-stone" aria-hidden="true" />
+              <span className="min-w-0 text-sm text-charcoal">{b.via}<ArrowRight className="ml-1.5 inline h-3.5 w-3.5 text-stone" aria-hidden="true" /></span>
               <span className="flex flex-wrap gap-1.5">{b.codes.map((c) => <StockChip key={c} code={c} judged={judged.includes(c)} focus={focus === c} />)}</span>
             </div>
           </li>

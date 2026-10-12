@@ -1,6 +1,7 @@
+import { digest } from './digest'
 import { useState } from 'react'
 import { ClipboardCheck, House, Radar, Star, User, type LucideIcon } from 'lucide-react'
-import { anomaliesAt, fmtDate, isFresh, judgmentsAt, PRICE_SOURCE, weekday } from './engine'
+import { fmtDate, judgmentsAt, PRICE_SOURCE, weekday } from './engine'
 import { Button, cn } from './kit'
 import { profileLabel, profileSet } from './profile'
 import { unreviewed } from './review'
@@ -18,10 +19,10 @@ const NAV: { key: Page; label: string; icon: LucideIcon }[] = [
 
 /** PC：左侧导航栏 + 右侧内容；手机：顶栏 + 内容 + 底部标签栏。 */
 export function App() {
-  const { page, setPage, onboarded, setOnboarded, tick, prevTick, reviewState, profile, openMe } = useStore()
-  // 导航上的数字：今天新出现的异动、还没复盘的判断
+  const { page, setPage, onboarded, setOnboarded, tick, prevTick, reviewState, profile, openMe, gradeOf } = useStore()
+  // 导航上的数字：今天需要看的事（和首页标题是同一个数）、还没复盘的判断
   const badge: Partial<Record<Page, number>> = {
-    today: anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick)).length,
+    today: digest(tick, prevTick, gradeOf).need.length,
     review: unreviewed(judgmentsAt(tick), reviewState).length,
   }
   return (

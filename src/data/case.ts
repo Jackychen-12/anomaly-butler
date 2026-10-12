@@ -271,3 +271,13 @@ export const REVIEWS: Record<string, Review> = {
   'j-mt-support': { expect: 'miss', why: '托底稳住了股价，但没有带来持续上涨，窗口内最高离目标价只差一点。', missed: '稳市政策的作用是止跌，不等于推动上涨；同一时间关税冲突还在升级。', lesson: '稳市类信号更适合用来撤销看跌的判断，而不是发出看涨的判断。' },
   'j-nv-104': { expect: 'void', why: '判断发出当天美方宣布暂缓对等关税，事前写明的失效条件触发，不计入战绩。', missed: '政策反复本身就是这一阶段的主要特征，判断的有效期可能撑不过一天。', lesson: '政策类判断的失效条件要写得可以检验，这一条做到了。' },
 }
+
+/** 已经公布、之后才生效的政策日期：用来提前提醒。按公开信息整理，未逐条核对原文 */
+export const UPCOMING: { date: string; text: string }[] = [
+  { date: '2025-04-09', text: '美国对华 104% 关税生效' },
+  { date: '2025-04-10', text: '中国对美加征关税生效' },
+  { date: '2025-05-02', text: '美国取消小额包裹免税生效' },
+]
+
+/** 同一条线上的事件：后一件是前一件的进展。首页把它们并成一件事，只展开最新的，前面的列成来龙去脉 */
+export const STORY: Record<string, string> = { tariff: '中美关税', retaliate: '中美关税', 'tariff-104': '中美关税', pause: '中美关税', exempt: '中美关税', huijin: '稳市政策', 'pboc-support': '稳市政策' }

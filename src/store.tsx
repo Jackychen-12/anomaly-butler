@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type Dispatch,
 import type { Answer } from './assistant'
 import { DEMO_HOLDINGS, SEED_REASONS, SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
 import { signalOf } from './data/signals'
+import { highAllowed } from './digest'
 import { configure, DEFAULT_RULES, grade, judgmentsAt, PREF_LABEL, type Anomaly, type Grade, type Judgment, type Pref, type Rules } from './engine'
 import { EMPTY_PROFILE, styleFactor, type PlanChoice, type Profile } from './profile'
 
@@ -13,8 +14,8 @@ export type MeTab = 'settings' | 'profile' | 'holdings' | 'memory' | 'plan'
  * 管家设置：这个助理被允许做什么。
  * memory：要不要记下我的表态、理由和选择；tune：要不要自己试更准的阈值并提建议；notify：哪些事可以主动提醒我。
  */
-export type Agent = { memory: boolean; tune: boolean; notify: { review: boolean; holdings: boolean; focus: boolean } }
-export const DEFAULT_AGENT: Agent = { memory: true, tune: true, notify: { review: true, holdings: true, focus: true } }
+export type Agent = { memory: boolean; tune: boolean; notify: { review: boolean; holdings: boolean; focus: boolean }; /** 打扰预算：每天最多几件事可以标成「高」 */ budget: number }
+export const DEFAULT_AGENT: Agent = { memory: true, tune: true, notify: { review: true, holdings: true, focus: true }, budget: 3 }
 /**
  * 订阅（演示，不扣费），参考 Claude 的订阅制：各档能用的功能基本一样，差的是模型用量。
  * tier：免费版、Pro、Max（用量是 Pro 的 5 倍或 20 倍）；cycle：月付还是年付；until：到期或下次续费的日期（演示数据里的日期）；
@@ -139,7 +140,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // 引擎按当前规则识别异动；放在渲染里同步应用，保证下面的页面读到的是新规则的结果
   configure(saved.rules)
   const [page, setPageState] = useState<Page>(pageFromHash)
-  const [meTab, setMeTab] = useState<MeTab>('plan')
+  const [meTab, setMeTab] = useState<MeTab>('settings')
   const [code, setCode] = useState<string | null>(null)
   const [chat, setChat] = useState<ChatMsg[]>([])
   const [reviewId, setReviewId] = useState<string | null>(null)
@@ -157,6 +158,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const remember: Store['remember'] = (m) => setSaved((s) => !s.agent.memory ? s : ({ ...s, memory: [{ ...m, id: `${Date.now()}-${s.memory.length}`, day: tick }, ...s.memory].slice(0, 200) }))
   const hasHoldings = Object.values(saved.holdings).some((w) => w > 0)
   const i = TICKS.indexOf(tick)
+  // 等级：先按强度 × 仓位 × 偏好 × 画像算，再按打扰预算限制「高」的数量（每天最多几件事）
+  const rawGrade = (a: Anomaly, c: string) => grade(a.strength, hasHoldings ? saved.holdings[c] ?? 0 : null, saved.prefs[c] ?? 'normal', styleFactor(saved.profile, signalOf(a.signal)?.group))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allowHigh = useMemo(() => highAllowed(tick, (a, c) => rawGrade(a, c).score, saved.agent.budget), [tick, saved.holdings, saved.prefs, saved.profile, saved.agent.budget, saved.rules])
 
   const value: Store = {
     ...saved,
@@ -216,7 +221,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setHoldings: (h, note) => { patch({ holdings: h }); remember({ kind: 'holding', text: note }) },
     hasHoldings,
     weightOf: (c) => (hasHoldings ? saved.holdings[c] ?? 0 : null),
-    gradeOf: (a, c) => grade(a.strength, hasHoldings ? saved.holdings[c] ?? 0 : null, saved.prefs[c] ?? 'normal', styleFactor(saved.profile, signalOf(a.signal)?.group)),
+    gradeOf: (a, c) => { const g = rawGrade(a, c); return g.level === '高' && !allowHigh.has(a.id) ? { ...g, level: '中' as const, capped: true } : g },
     setProfile: (p, note) => { setSaved((s) => ({ ...s, profile: { ...s.profile, ...p } })); remember({ kind: 'profile', text: note }) },
     remember,
     forget: (id) => setSaved((s) => ({ ...s, memory: s.memory.filter((m) => m.id !== id) })),

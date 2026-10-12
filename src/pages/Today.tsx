@@ -1,69 +1,63 @@
 /**
- * 今日：先用图看全局（自选变化、板块变化），再分「宏观」和「微观」看管家捕捉到的异动——涨的和跌的都算。
- * 宏观是政策和跨市场的事，画出传导路径，除了今天新出现的，也列出近几天还在起作用的；微观是公司自己的事和行情指标。
- * 再往下是最近有结果的判断。右边是提问栏，窄屏时收进底部输入条。
+ * 今日：先说今天有几件事要看（管家把一条条信号按原因归并成「事」），再用两张图看全局，
+ * 然后分「宏观」和「微观」列出这几件事。宏观的事下面直接挂着它在行情上引起的反应（微观指标），同一个原因只出现一次。
+ * 再往下是接下来要留意的日子和最近有结果的判断。右边是提问栏，窄屏时收进底部输入条。
  */
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp, MessageCircle } from 'lucide-react'
 import { AskPanel, useGo } from '../ask'
 import { DivergingBars, JudgmentMeter, type BarRow } from '../charts'
-import { STOCKS } from '../data/case'
-import { anomaliesAt, changeOver, fmtDate, isFresh, judgmentsAt, recentlySettled, sectorRows, shiftDay, signed, stockOf, weekday, whyLine, type Anomaly, type Judgment, type Level } from '../engine'
+import { STOCKS, STORY, UPCOMING } from '../data/case'
+import { digest, type Digest, type Thing } from '../digest'
+import { changeOver, fmtDate, judgmentsAt, recentlySettled, sectorRows, signed, stockOf, weekday, type Anomaly, type Judgment, type Level } from '../engine'
 import { Button, cn, LevelTag, Stamp, Tag } from '../kit'
-import { scopeOf, signalOf } from '../data/signals'
-import { PathTree, StockChip } from '../path'
+import { signalOf } from '../data/signals'
+import { PathTree } from '../path'
 import { Sheet, useIsWide, WithRail } from '../layout'
 import { VoteButtons } from '../parts'
-import { meaning } from '../profile'
+import { meaning, profileSet } from '../profile'
 import { nudges } from '../proactive'
 import { useStore } from '../store'
 
 export function TodayPage() {
   const st = useStore()
-  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent } = st
+  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent, rules } = st
   const go = useGo()
   const wide = useIsWide()
   const [sheet, setSheet] = useState(false)
 
-  const all = anomaliesAt(tick)
-  const fresh = all.filter((a) => isFresh(a, tick, prevTick))
-  // 宏观 = 政策与跨市场（包括自动识别的美股映射）；微观 = 公司事件 + 行情指标
-  const macro = fresh.filter((a) => scopeOf(a.signal) === '宏观')
-  const company = fresh.filter((a) => scopeOf(a.signal) === '微观' && !a.indicators)
-  const moves = fresh.filter((a) => !!a.indicators)
-  // 近几天出现、还在起作用的宏观事件（宏观的影响不会一天结束）
-  const since = shiftDay(tick, -4)
-  const recentMacro = all.filter((a) => scopeOf(a.signal) === '宏观' && !fresh.includes(a) && (a.tick ?? a.after!) >= since)
+  const dg = digest(tick, prevTick, gradeOf)
   const js = judgmentsAt(tick)
   const recent = recentlySettled(tick)
   // 管家主动想说的事：宽屏放进右侧对话栏的开场白里，窄屏放在主内容顶部
-  const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent }).slice(0, wide ? 3 : 2)
-  // 一件事的等级取它影响到的自选里最高的那个
-  const levelOf = (a: Anomaly) => a.hits.map((h) => gradeOf(a, h)).sort((x, y) => y.score - x.score)[0]
-  const byLevel = (list: Anomaly[]) => [...list].sort((a, b) => levelOf(b).score - levelOf(a).score)
-  // 降噪：影响轻微（低）的收起来，只把高和中摆出来
-  const major = (list: Anomaly[]) => byLevel(list).filter((a) => levelOf(a).level !== '低')
-  const minor = (list: Anomaly[]) => byLevel(list).filter((a) => levelOf(a).level === '低')
-  const microCount = company.length + moves.length
-  const count = macro.length + microCount
-  const need = major(fresh).length
+  const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent, rules }).slice(0, wide ? 3 : 2)
+  const need = dg.need.length
+  const macro = dg.things.filter((t) => t.scope === '宏观'), micro = dg.things.filter((t) => t.scope === '微观')
   // 每只股票今天最高的异动等级，用来在图上打点
-  const dotOf = (code: string): Level | null => fresh.filter((a) => a.hits.includes(code)).map((a) => gradeOf(a, code)).sort((x, y) => y.score - x.score)[0]?.level ?? null
+  const dotOf = (code: string): Level | null => dg.things.flatMap((t) => [...(t.cause && t.fresh ? [t.cause] : []), ...t.reactions]).filter((a) => a.hits.includes(code)).map((a) => gradeOf(a, code)).sort((x, y) => y.score - x.score)[0]?.level ?? null
 
-  const headline = count
-    ? `早上好。今天捕捉到 ${count} 条异动（宏观 ${macro.length}，微观 ${microCount}），其中 ${need} 条需要你看，排在左边了。`
+  const headline = dg.signals
+    ? `早上好。今天捕捉到 ${dg.signals} 条信号，归并成 ${dg.things.length} 件事，其中 ${need} 件需要你看，排在左边了。`
     : '早上好。今天自选股上很平静，没有新的事需要你看。'
   const rail = wide ? <AskPanel tips={tips} headline={headline} /> : null
+  // 默认只展开最重要的；窄屏上只展开第一件
+  const openByDefault = (t: Thing) => t.level !== '低' && (wide || t === dg.things[0])
+  const card = (t: Thing) => <ThingCard key={t.id} t={t} judgments={js} defaultOpen={openByDefault(t)} />
 
   return (
     <>
       <WithRail hideRailBelowXl rail={rail} railClassName="xl:overflow-hidden">
         <div className="mx-auto max-w-[840px] px-4 py-5 lg:px-8 lg:py-7">
           <p className="text-[13px] text-steel">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
-          <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{need ? `今天有 ${need} 件事需要你看` : count ? '今天没有需要你特别留意的事' : '今天没有新的事需要你看'}</h1>
+          <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{need ? `今天有 ${need} 件事需要你看` : dg.signals ? '今天没有需要你特别留意的事' : '今天没有新的事需要你看'}</h1>
+          <Funnel d={dg} />
+          {profileSet(profile) ? null : (
+            <button type="button" onClick={() => st.openMe('profile')} className="mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-hairline-strong px-3.5 py-2 text-left text-[13px] text-slate hover:bg-surface-soft">
+              <span className="min-w-0 flex-1">花半分钟告诉管家你能接受多大的跌幅、一般拿多久，提醒会按你的风格排。</span><span className="shrink-0 text-link">设置画像 →</span>
+            </button>
+          )}
 
           <Overview dotOf={dotOf} />
-
 
           {tips.length && !wide ? (
             <ul className="mt-4 overflow-hidden rounded-lg bg-tint-lavender text-on-lavender" aria-label="管家想提醒你">
@@ -76,35 +70,38 @@ export function TodayPage() {
             </ul>
           ) : null}
 
-          <Section title="宏观" sub="政策与跨市场的事，以及它怎么传到你的自选" count={macro.length + recentMacro.length}>
-            {macro.length + recentMacro.length ? (
-              <div className="flex flex-col gap-3">
-                {major(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
-                <Minor n={minor(macro).length}>{minor(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}</Minor>
-                {recentMacro.length ? (
-                  <>
-                    <p className="mt-1 text-[13px] text-steel">近几天出现、还在起作用的</p>
-                    {recentMacro.map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} compact />)}
-                  </>
-                ) : null}
-              </div>
-            ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的宏观事件。</p>}
+          <Section title="宏观" sub="政策与跨市场的事，以及它在你的自选上引起的反应" count={macro.length}>
+            <div className="flex flex-col gap-3">
+              {macro.length ? macro.map(card) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的宏观事件，前几天的事也没有新的反应。</p>}
+              {dg.earlier.length ? (
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1 py-1 text-[13px] text-steel hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />近几天还有 {dg.earlier.length} 件事，今天没有新的反应</summary>
+                  <ul className="mt-2 overflow-hidden rounded-lg border border-hairline">
+                    {dg.earlier.map((a) => {
+                      const j = js.find((x) => x.anomaly.id === a.id)
+                      return (
+                        <li key={a.id} className="border-b border-hairline-soft last:border-b-0">
+                          <button type="button" onClick={() => (j ? st.openReview(j.id) : st.openStock(a.hits[0]))} className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2.5 text-left hover:bg-surface-soft">
+                            {a.tone === 'relief' ? <Tag tone="green">好消息</Tag> : null}
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.title}</span>
+                            <span className="shrink-0 text-xs text-steel">{j ? `${stockOf(j.code).name} ${j.up ? '看涨' : '看跌'} · ${STATUS_TEXT[j.status]}` : a.when}</span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </details>
+              ) : null}
+            </div>
           </Section>
-          <Section title="微观" sub="公司自己的事，和行情指标的异动" count={microCount}>
-            {microCount ? (
-              <div className="flex flex-col gap-3">
-                {major(company).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
-                {major(moves).length ? <MovesCard moves={major(moves)} judgments={js} levelOf={(a) => levelOf(a).level} /> : null}
-                <Minor n={minor(company).length + minor(moves).length}>
-                  {minor(company).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
-                  {minor(moves).length ? <MovesCard moves={minor(moves)} judgments={js} levelOf={(a) => levelOf(a).level} /> : null}
-                </Minor>
-              </div>
-            ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的公司事件或指标异动。</p>}
+          <Section title="微观" sub="公司自己的事，和找不到对应事件的行情异动" count={micro.length}>
+            {micro.length ? <div className="flex flex-col gap-3">{micro.map(card)}</div> : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有单独的公司事件；行情上的异动都能对上面的宏观事件，已经并在一起了。</p>}
           </Section>
 
+          <Ahead judgments={js} />
+
           {recent.length ? (
-            <Section title="最近有结果" action={<Button size="xs" variant="ghost" onClick={() => st.setPage('review')}>全部 →</Button>}><Rows list={recent.slice(0, 5)} /></Section>
+            <Section title="最近有结果" sub="按事件归在一起" action={<Button size="xs" variant="ghost" onClick={() => st.setPage('review')}>全部 →</Button>}><Results list={recent} /></Section>
           ) : null}
         </div>
 
@@ -121,14 +118,26 @@ export function TodayPage() {
   )
 }
 
-/** 影响轻微的收在这里，点开才看 */
-function Minor({ n, children }: { n: number; children: ReactNode }) {
-  if (!n) return null
+const STATUS_TEXT = { pending: '在等结果', hit: '说对', miss: '说错', void: '作废' } as const
+
+/** 一条细的漏斗：捕捉到几条信号 → 归并成几件事 → 需要看几件。让「降噪」看得见 */
+function Funnel({ d }: { d: Digest }) {
+  if (!d.signals) return null
+  const steps = [
+    { n: d.signals, label: '条信号', hint: `${d.stocks} 只自选里捕捉到`, tone: 'bg-hairline-strong' },
+    { n: d.things.length, label: '件事', hint: '同一个原因并成一件', tone: 'bg-stone' },
+    { n: d.need.length, label: '件要看', hint: '其余影响轻微，已收起', tone: 'bg-primary' },
+  ]
   return (
-    <details className="group">
-      <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1 py-1 text-[13px] text-steel hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />另有 {n} 条影响轻微，已收起</summary>
-      <div className="mt-2 flex flex-col gap-3">{children}</div>
-    </details>
+    <ol className="mt-3 grid grid-cols-3 gap-2" aria-label={`今天 ${d.signals} 条信号，归并成 ${d.things.length} 件事，${d.need.length} 件要看`}>
+      {steps.map((s, i) => (
+        <li key={s.label} className="min-w-0">
+          <span className="flex h-1.5 overflow-hidden rounded-full bg-surface" aria-hidden="true"><span className={cn('h-full rounded-full', s.tone)} style={{ width: `${Math.max(6, (s.n / d.signals) * 100)}%` }} /></span>
+          <p className="mt-1.5 flex items-baseline gap-1"><b className={cn('text-xl font-semibold tabular-nums tracking-tight', i === 2 ? 'text-ink' : 'text-slate')}>{s.n}</b><span className="text-[13px] text-charcoal">{s.label}</span></p>
+          <p className="truncate text-xs text-steel">{s.hint}</p>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -188,7 +197,7 @@ function Section({ title, sub, count, action, children }: { title: string; sub?:
   return (
     <section className="mt-6">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-base font-semibold">{title}{count != null ? <span className="text-[13px] font-normal tabular-nums text-steel">{count} 条</span> : null}{sub ? <span className="hidden text-[13px] font-normal text-steel sm:inline">{sub}</span> : null}</h2>
+        <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-base font-semibold">{title}{count != null ? <span className="text-[13px] font-normal tabular-nums text-steel">{count} 件</span> : null}{sub ? <span className="hidden text-[13px] font-normal text-steel sm:inline">{sub}</span> : null}</h2>
         {action}
       </div>
       {children}
@@ -196,74 +205,64 @@ function Section({ title, sub, count, action, children }: { title: string; sub?:
   )
 }
 
-/** 判断列表：名称 + 进度条 + 结果。点开进入和管家的对话（表态、说理由、复盘） */
-function Rows({ list }: { list: Judgment[] }) {
-  const { openReview, reviewState } = useStore()
-  return (
-    <ul className="overflow-hidden rounded-lg border border-hairline">
-      {list.map((j) => (
-        <li key={j.id} className="border-b border-hairline-soft last:border-b-0">
-          <button type="button" onClick={() => openReview(j.id)} className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-3.5 py-2.5 text-left hover:bg-surface-soft sm:grid-cols-[minmax(0,1fr)_200px_auto]">
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium">{stockOf(j.code).name}</span>
-              <span className="block truncate text-xs text-steel">{j.anomaly.title}</span>
-            </span>
-            <JudgmentMeter j={j} className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto" />
-            {j.status === 'pending'
-              ? <span className="text-right text-xs leading-tight text-steel tabular-nums">{j.n - j.elapsed} 个交易日后<br />对答案</span>
-              : <span className="flex items-center gap-2"><span className={cn('text-xs', reviewState[j.id] ? 'text-steel' : 'font-medium text-on-lavender')}>{reviewState[j.id] ? '已复盘' : '去复盘'}</span><span className="origin-right scale-[0.8]"><Stamp status={j.status} /></span></span>}
-          </button>
-        </li>
-      ))}
-    </ul>
+/** 一件事一张卡：原因（政策或公司事件）→ 传导路径 → 行情上已经出现的反应 → 管家的判断。同一个原因只出现这一次 */
+function ThingCard({ t, judgments, defaultOpen }: { t: Thing; judgments: Judgment[]; defaultOpen: boolean }) {
+  const { openStock } = useStore()
+  const [open, setOpen] = useState(defaultOpen)
+  const a = t.cause
+  const members = [...(a ? [a] : []), ...t.history, ...t.reactions]
+  const js = judgments.filter((j) => members.some((m) => m.id === j.anomaly.id) && (j.status === 'pending' || (t.fresh && j.anomaly.id === a?.id) || t.reactions.some((r) => r.id === j.anomaly.id)))
+  const codes = [...new Set(members.flatMap((m) => m.hits))]
+  const title = a ? a.title : `${t.reactions.length} 只自选股的行情指标有异动，没有找到对应的事件`
+  const relief = a?.tone === 'relief'
+  const head = (
+    <>
+      <LevelTag level={t.level} />
+      {relief ? <Tag tone="green">好消息</Tag> : null}
+      {a && !t.fresh ? <Tag>前几天的事，今天有新反应</Tag> : null}
+      {a && STORY[a.id] ? <Tag>{STORY[a.id]}</Tag> : null}
+    </>
   )
-}
-
-/** 一件事一张卡：标题、传导路径图（事件 → 途径 → 你的自选股）、管家的判断和进度。其余文字放进判断页的四步里 */
-function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level; judgments: Judgment[]; compact?: boolean }) {
-  const { openStock, openReview, profile } = useStore()
-  const [open, setOpen] = useState(!compact)
-  const relief = a.tone === 'relief'
-  if (!open) {
-    // 收起时是一行：标题 + 管家的判断走到哪了；点一下展开
-    const j = judgments[0]
-    return (
-      <article className="rounded-lg border border-hairline">
-        <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2.5 text-left hover:bg-surface-soft">
-          <LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}
-          <span className="order-last min-w-0 basis-full text-sm font-medium sm:order-none sm:flex-1 sm:basis-0 sm:truncate">{a.title}</span>
-          <span className="ml-auto shrink-0 text-xs text-steel sm:ml-0">{j ? `${stockOf(j.code).name} ${j.up ? '看涨' : '看跌'} · ${j.status === 'pending' ? '在等结果' : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}` : a.when}</span>
-          <span className="flex shrink-0 items-center gap-0.5 text-xs text-steel">展开<ChevronDown className="h-4 w-4" /></span>
-        </button>
-      </article>
-    )
-  }
+  if (!open) return (
+    <article className="rounded-lg border border-hairline">
+      <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2.5 text-left hover:bg-surface-soft">
+        {head}
+        <span className="order-last min-w-0 basis-full text-sm font-medium sm:order-none sm:flex-1 sm:basis-0 sm:truncate">{title}</span>
+        <span className="ml-auto shrink-0 text-xs text-steel sm:ml-0">涉及 {codes.length} 只自选</span>
+        <span className="flex shrink-0 items-center gap-0.5 text-xs text-steel">展开<ChevronDown className="h-4 w-4" /></span>
+      </button>
+    </article>
+  )
   return (
     <article className="rounded-lg border border-hairline">
       <div className="px-3.5 pb-3 pt-3">
-        <div className="flex flex-wrap items-center gap-1.5"><LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}<span className="text-xs text-steel">{a.when}</span>
+        <div className="flex flex-wrap items-center gap-1.5">{head}{a ? <span className="text-xs text-steel">{a.when}</span> : null}
           <button type="button" onClick={() => setOpen(false)} aria-expanded={true} className="-my-1 -mr-1.5 ml-auto flex h-7 items-center gap-0.5 rounded-sm px-1.5 text-xs text-steel hover:bg-hover hover:text-ink">收起<ChevronUp className="h-4 w-4" /></button>
         </div>
-        <h3 className="mb-2.5 mt-1.5 text-[17px] font-semibold leading-snug tracking-tight">{a.title}</h3>
-        <PathTree a={a} judged={judgments.map((j) => j.code)} />
-      </div>
-      {judgments.map((j) => {
-        const mean = meaning(profile, j)
-        return (
-          <div key={j.id} className="grid gap-x-5 gap-y-2.5 border-t border-hairline-soft px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-            <div className="min-w-0">
-              <p className="text-[15px] leading-snug"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>
-              {mean ? <p className="mt-1 text-[13px] text-on-lavender">{mean}</p> : null}
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-                {j.status === 'pending' ? <VoteButtons j={j} /> : null}
-                <button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">去表态和对答案 →</button>
-              </div>
-            </div>
-            <JudgmentMeter j={j} />
+        <h3 className="mt-1.5 text-[17px] font-semibold leading-snug tracking-tight">{title}</h3>
+        {a ? <div className="mt-2.5"><PathTree a={a} judged={js.map((j) => j.code)} /></div> : null}
+        {t.history.length ? (
+          <div className="mt-3">
+            <p className="mb-1 text-xs text-steel">这件事之前的进展</p>
+            <ol className="ml-1 border-l border-hairline-strong">
+              {t.history.map((h) => (
+                <li key={h.id} className="relative py-0.5 pl-3.5 text-[13px] text-charcoal">
+                  <span aria-hidden="true" className="absolute -left-[3.5px] top-[9px] h-1.5 w-1.5 rounded-full bg-stone" />
+                  <span className="mr-2 tabular-nums text-steel">{fmtDate(h.tick!)}</span>{h.title}
+                </li>
+              ))}
+            </ol>
           </div>
-        )
-      })}
-      {judgments.length ? null : (
+        ) : null}
+      </div>
+      {t.reactions.length ? (
+        <div className="border-t border-hairline-soft px-3.5 py-2.5">
+          <p className="mb-1 text-xs text-steel">{a ? '行情上已经出现的反应' : '触发的指标'}</p>
+          <ul>{t.reactions.map((r) => <Reaction key={r.id} a={r} />)}</ul>
+        </div>
+      ) : null}
+      {js.map((j) => <JudgmentBlock key={j.id} j={j} />)}
+      {js.length || !a ? null : (
         <p className="flex flex-wrap items-center gap-x-3 border-t border-hairline-soft px-3.5 py-2.5 text-[13px] text-steel">
           <span>{signalOf(a.signal)?.judges === false ? '这类信号只提醒，不做判断。' : relief ? '好消息，只提醒、不做判断。' : '影响还不明确，先记下、不做判断。'}</span>
           <button type="button" onClick={() => openStock(a.hits[0])} className="text-link hover:underline">看证据 →</button>
@@ -273,43 +272,98 @@ function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level;
   )
 }
 
-/** 行情指标的异动：一行一只股票，列出触发了哪些指标，附一句原因 */
-function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments: Judgment[]; levelOf: (a: Anomaly) => Level }) {
-  const { tick, openReview, profile } = useStore()
-  // 画像里选了「新手」：每只股票最主要的那个指标多给一句名词解释
-  const novice = profile.experience === 'new'
-  const [open, setOpen] = useState(true)
+/** 一条反应：哪只股票、涨跌多少（小条形）、触发了哪些指标。指标名悬停有一句大白话解释 */
+function Reaction({ a }: { a: Anomaly }) {
+  const { tick, openStock, holdings } = useStore()
+  const code = a.hits[0], v = changeOver(code, tick, 1)
+  // 跨市场的异动没有指标，直接用标题说明
+  if (!a.indicators) return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-[13px]">
+      <span className="w-[72px] shrink-0 text-steel">跨市场</span><span className="min-w-0 flex-1 text-charcoal">{a.title}，会传到{a.hits.map((c) => stockOf(c).name.replace('-W', '')).join('、')}的开盘</span>
+    </li>
+  )
   return (
-    <article className="rounded-lg border border-hairline">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className={cn('flex w-full items-center gap-2 px-3.5 pt-3 text-left', open ? 'pb-2' : 'pb-3')}>
-        <h3 className="min-w-0 flex-1 text-[17px] font-semibold leading-snug tracking-tight">{moves.length} 只自选股的行情指标有异动</h3>
-        <span className="flex shrink-0 items-center gap-0.5 text-xs text-steel">{open ? '收起' : '展开'}{open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
+    <li>
+      <button type="button" onClick={() => openStock(code)} className="-mx-1.5 grid w-[calc(100%+12px)] grid-cols-[72px_112px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 rounded-sm px-1.5 py-1.5 text-left hover:bg-surface-soft max-sm:grid-cols-[72px_minmax(0,1fr)]">
+        <span className="truncate text-[13px] font-medium">{stockOf(code).name.replace('-W', '')}</span>
+        <span className="flex items-center gap-2" title={holdings[code] ? `占你持仓 ${Math.round(holdings[code] * 100)}%` : undefined}>
+          <span className="relative h-2 w-12 shrink-0 rounded-full bg-surface" aria-hidden="true"><span className={cn('absolute inset-y-0 rounded-full', v >= 0 ? 'left-1/2 bg-up' : 'right-1/2 bg-down')} style={{ width: `${Math.min(50, Math.abs(v) * 5)}%` }} /></span>
+          <span className="text-[13px] tabular-nums text-ink">{signed(v)}%</span>
+        </span>
+        <span className="flex flex-wrap gap-1 max-sm:col-span-2">
+          {a.indicators.map((h) => <span key={h.id} title={signalOf(h.id)?.intro} className="rounded-xs bg-surface px-1.5 py-0.5 text-xs text-charcoal">{h.label}</span>)}
+        </span>
       </button>
-      {open ? null : <p className="flex flex-wrap gap-1.5 px-3.5 pb-3">{moves.map((a) => <StockChip key={a.id} code={a.hits[0]} />)}</p>}
-      <ul className={open ? '' : 'hidden'}>
-        {moves.map((a) => {
-          const j = judgments.find((x) => x.anomaly.id === a.id)
-          return (
-            <li key={a.id} className="border-t border-hairline-soft px-3.5 py-2.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <LevelTag level={levelOf(a)} /><StockChip code={a.hits[0]} judged={!!j} />
-                {a.indicators?.map((h) => <Tag key={h.id}><span className="font-mono text-[11px] text-stone">{h.level}</span>{h.label}</Tag>)}
-              </div>
-              <p className="mt-1.5 text-[13px] text-slate">{whyLine(a, tick)}</p>
-              {novice ? <p className="mt-1 text-xs text-steel">{signalOf(a.signal)?.name}：{signalOf(a.signal)?.define}</p> : null}
-              {j ? (
-                <div className="mt-2.5 grid gap-x-5 gap-y-2.5 sm:grid-cols-[minmax(0,1fr)_220px]">
-                  <div className="min-w-0">
-                    <p className="text-sm"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">{j.status === 'pending' ? <VoteButtons j={j} /> : null}<button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">去表态和对答案 →</button></div>
-                  </div>
-                  <JudgmentMeter j={j} />
-                </div>
-              ) : null}
-            </li>
-          )
-        })}
-      </ul>
-    </article>
+    </li>
+  )
+}
+
+function JudgmentBlock({ j }: { j: Judgment }) {
+  const { openReview, profile } = useStore()
+  const mean = meaning(profile, j)
+  return (
+    <div className="grid gap-x-5 gap-y-2.5 border-t border-hairline-soft px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+      <div className="min-w-0">
+        <p className="text-[15px] leading-snug"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>
+        {mean ? <p className="mt-1 text-[13px] text-on-lavender">{mean}</p> : null}
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+          {j.status === 'pending' ? <VoteButtons j={j} /> : <span className="text-[13px] text-steel">{STATUS_TEXT[j.status]}</span>}
+          <button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">{j.status === 'pending' ? '去表态和对答案 →' : '去复盘 →'}</button>
+        </div>
+      </div>
+      <JudgmentMeter j={j} />
+    </div>
+  )
+}
+
+/** 接下来要留意的日子：政策哪天生效、哪条判断哪天对答案。画成一条时间线 */
+function Ahead({ judgments }: { judgments: Judgment[] }) {
+  const { tick, openReview } = useStore()
+  const items = [
+    ...UPCOMING.filter((u) => u.date >= tick).map((u) => ({ date: u.date, kind: '政策生效', text: u.text, go: undefined as undefined | (() => void) })),
+    ...judgments.filter((j) => j.status === 'pending' && j.dueDate).map((j) => ({ date: j.dueDate!, kind: '对答案', text: `${stockOf(j.code).name}${j.up ? '看涨' : '看跌'}的判断到期`, go: () => openReview(j.id) })),
+  ].sort((x, y) => (x.date < y.date ? -1 : 1))
+  if (!items.length) return null
+  const days = [...new Set(items.map((i) => i.date))]
+  return (
+    <Section title="接下来要留意的日子" sub="政策哪天生效，判断哪天对答案">
+      <ol className="relative ml-1.5 border-l border-hairline-strong sm:ml-0 sm:flex sm:border-l-0 sm:border-t sm:pt-0">
+        {days.map((d) => (
+          <li key={d} className="relative pb-3 pl-4 last:pb-0 sm:min-w-0 sm:flex-1 sm:pb-0 sm:pl-0 sm:pr-3 sm:pt-3">
+            <span aria-hidden="true" className={cn('absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-canvas sm:-top-[5px] sm:left-0', d === tick ? 'bg-primary' : 'bg-stone')} />
+            <p className="text-xs font-medium tabular-nums text-ink">{fmtDate(d)} {weekday(d)}{d === tick ? ' · 今天' : ''}</p>
+            {items.filter((i) => i.date === d).map((i) => (
+              i.go ? <button key={i.text} type="button" onClick={i.go} className="mt-0.5 block text-left text-[13px] leading-snug text-charcoal hover:text-link"><span className="mr-1 text-on-lavender">{i.kind}</span>{i.text}</button>
+                : <p key={i.text} className="mt-0.5 text-[13px] leading-snug text-charcoal"><span className="mr-1 text-warning">{i.kind}</span>{i.text}</p>
+            ))}
+          </li>
+        ))}
+      </ol>
+    </Section>
+  )
+}
+
+/** 最近有结果的判断，按事件归在一起：一件事一行，后面是它落在各只股票上的结果 */
+function Results({ list }: { list: Judgment[] }) {
+  const { openReview, reviewState } = useStore()
+  const groups = new Map<string, Judgment[]>()
+  for (const j of list) groups.set(j.anomaly.id, [...(groups.get(j.anomaly.id) ?? []), j])
+  return (
+    <ul className="overflow-hidden rounded-lg border border-hairline">
+      {[...groups.values()].slice(0, 4).map((g) => (
+        <li key={g[0].anomaly.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-hairline-soft px-3.5 py-2.5 last:border-b-0">
+          <span className="min-w-0 flex-1 basis-[240px] text-sm font-medium">{g[0].anomaly.title}</span>
+          <span className="flex flex-wrap gap-1.5">
+            {g.map((j) => (
+              <button key={j.id} type="button" onClick={() => openReview(j.id)} title={reviewState[j.id] ? '已复盘' : '还没复盘'}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-hairline py-0.5 pl-2 pr-1 text-[13px] hover:bg-surface-soft">
+                {stockOf(j.code).name.replace('-W', '')}<span className="origin-right scale-[0.72]"><Stamp status={j.status as 'hit' | 'miss' | 'void'} /></span>
+                {reviewState[j.id] ? null : <span aria-hidden="true" className="-ml-1 mr-1 h-1.5 w-1.5 rounded-full bg-primary" />}
+              </button>
+            ))}
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }

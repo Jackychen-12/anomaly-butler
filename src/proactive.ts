@@ -1,19 +1,20 @@
 /** 主动提示：管家根据记住的事（表态、偏好、持仓）和当天的数据，自己先开口。 */
 import { STOCKS, type Vote } from './data/case'
-import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, type Pref } from './engine'
+import { signalOf, TIER_LABEL } from './data/signals'
+import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, tierOf, type Pref, type Rules } from './engine'
 import { unreviewed } from './review'
 import type { Link } from './assistant'
 import { profileSet, type Profile } from './profile'
 import type { Agent, ReviewState } from './store'
 
 export type Nudge = { id: string; text: string; action?: Link }
-type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState>; profile: Profile; agent: Agent }
+type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState>; profile: Profile; agent: Agent; rules: Rules }
 
 /** 每条提醒归哪一类开关管（见「我的 → 管家设置」）。没列出的（比如请你设置画像）不受开关影响 */
 const KIND_OF = (id: string): keyof Agent['notify'] | 'tune' | null =>
   /^(review|settled|split|due)/.test(id) ? 'review' : /^(held-hit|over|add-holdings)/.test(id) ? 'holdings' : id.startsWith('focus') ? 'focus' : id.startsWith('tip') ? 'tune' : null
 
-export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent }: Ctx): Nudge[] {
+export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent, rules }: Ctx): Nudge[] {
   const out: Nudge[] = []
   const js = judgmentsAt(tick)
   const fresh = anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick))
@@ -23,6 +24,15 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
   const todo = unreviewed(js, reviewState)
   if (todo.length) out.push({ id: 'review', text: `${todo.length} 条判断出了结果，还没复盘。`, action: { label: '开始复盘', review: todo[0].id } })
 
+  // 长期优化：某项指标的判断连着说错，提议把它的门槛调高一档（由用户点头）
+  for (const id of new Set(js.map((j) => j.anomaly.signal))) {
+    const done = js.filter((j) => j.anomaly.signal === id && (j.status === 'hit' || j.status === 'miss'))
+    const cur = tierOf(id, rules)
+    if (done.length >= 2 && done.every((j) => j.status === 'miss') && cur !== 'aggressive') {
+      const to = cur === 'steady' ? 'balanced' : 'aggressive'
+      out.push({ id: `tip-${id}`, text: `「${signalOf(id)?.name}」最近 ${done.length} 条判断都说错了。要不要把它的提醒门槛调高一档（${TIER_LABEL[to]}）？`, action: { label: '调高一档', tier: { id, to } } })
+    }
+  }
   // 持仓股被说中了：事后应对（合成一条）
   const heldHit = recent.filter((j) => j.status === 'hit' && !j.up && (holdings[j.code] ?? 0) > 0)
   if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}已跌破管家说的价格。`, action: { label: '去自选定做法', code: heldHit[0].code } })

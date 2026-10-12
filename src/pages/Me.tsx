@@ -2,6 +2,7 @@
  * 我的，五页各管一件事、互不重复：
  * 画像（管家眼里的你：你说的 + 它观察到的 + 用在哪）、持仓、长期记忆（经验、我的逻辑、记录）、设置（这个助理能做什么、何时找你、连着什么）、订阅（各档的模型用量）。
  */
+import { digest } from '../digest'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { DEMO_HOLDINGS, STOCKS } from '../data/case'
@@ -241,10 +242,34 @@ function Item({ title, desc, right, onClick }: { title: string; desc?: ReactNode
   )
 }
 const On = () => <span className="shrink-0 text-xs text-steel">已开启</span>
-const Soon = () => <span className="shrink-0 rounded-xs bg-tint-gray px-1.5 text-xs leading-5 text-on-gray">规划中</span>
 /** Pro 起才有的功能。演示里只是标出来，不限制使用 */
 
 /** 这是一个金融场景下的个人助理：这里管它能做什么、记什么、什么时候主动找你、连着哪些数据和账户。 */
+/** 开盘前会推到手机上的内容：和首页同一份归并结果，最多推「打扰预算」那么多条。推送通道还没接，这里只是预览 */
+function PushPreview() {
+  const { tick, prevTick, gradeOf, agent } = useStore()
+  const dg = digest(tick, prevTick, gradeOf)
+  const items = dg.need.slice(0, agent.budget)
+  return (
+    <section>
+      <h2 className="eyebrow mb-1.5 px-1">今天开盘前会推给你的 <span className="font-normal normal-case">· 预览，推送通道规划中</span></h2>
+      <div className="rounded-xl bg-surface p-3">
+        {items.length ? items.map((t) => (
+          <div key={t.id} className="mb-2 flex gap-2.5 rounded-lg bg-canvas px-3 py-2.5 shadow-subtle last:mb-0">
+            <span aria-hidden="true" className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-ink text-[11px] font-semibold text-canvas">异</span>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-baseline gap-2 text-xs text-steel"><span className="font-medium text-ink">异动管家</span><span>08:30</span><span className="ml-auto">{t.level}</span></p>
+              <p className="mt-0.5 text-[13px] font-medium leading-snug">{t.cause ? t.cause.title : `${t.reactions.length} 只自选股的行情指标有异动`}</p>
+              <p className="mt-0.5 truncate text-xs text-steel">涉及 {[...new Set([...(t.cause?.hits ?? []), ...t.reactions.flatMap((r) => r.hits)])].map((c) => stockOf(c).name.replace('-W', '')).join('、')}</p>
+            </div>
+          </div>
+        )) : <p className="px-1 py-2 text-[13px] text-steel">今天没有需要推送的事。没事的日子不打扰你。</p>}
+        <p className="mt-2 px-1 text-xs text-steel">今天捕捉到 {dg.signals} 条信号，归并成 {dg.things.length} 件事，只推最重要的 {items.length} 件。</p>
+      </div>
+    </section>
+  )
+}
+
 function AgentSettings() {
   const { agent, setAgent, lessons, rules, tick, openMe, setPage, setOnboarded, reset, sub } = useStore()
   const usage = useUsage()
@@ -286,8 +311,11 @@ function AgentSettings() {
           <Item title="判断出结果、该复盘时" right={<Toggle checked={agent.notify.review} onChange={(v) => notify('review', v)} label="判断出结果、该复盘时提醒" />} />
           <Item title="持仓股有风险、仓位超限时" right={<Toggle checked={agent.notify.holdings} onChange={(v) => notify('holdings', v)} label="持仓股有风险、仓位超限时提醒" />} />
           <Item title="我让多留意的股票有新异动时" right={<Toggle checked={agent.notify.focus} onChange={(v) => notify('focus', v)} label="我让多留意的股票有新异动时提醒" />} />
-          <Item title="每天开盘前推送简报" desc="推送到手机" right={<Soon />} />
+          <Item title="每天最多几件事标成「高」" desc="打扰预算：超出的自动降到「中」，不会漏，只是不抢在最前面"
+            right={<span className="flex shrink-0 gap-0.5 rounded-md border border-hairline-strong p-0.5" role="group" aria-label="每天最多几件事标成高">{[1, 3, 5].map((n) => <button key={n} type="button" aria-pressed={agent.budget === n} onClick={() => setAgent({ ...agent, budget: n })} className={cn('h-7 w-8 rounded-sm text-[13px] tabular-nums', agent.budget === n ? 'bg-ink font-medium text-canvas' : 'text-slate hover:bg-hover')}>{n}</button>)}</span>} />
         </Group>
+
+        <PushPreview />
 
         <Group title="通用">
           <Item title="重看新手引导" onClick={() => { setOnboarded(false); setPage('today') }} />

@@ -7,7 +7,7 @@ import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
 import { AnomalyBody, GradeBox, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
 import { Planner } from '../planner'
-import { scopeOf } from '../data/signals'
+import { scopeOf, signalOf } from '../data/signals'
 import { useStore } from '../store'
 
 type Row = { s: Stock; fresh: { a: Anomaly; g: Grade }[]; pending: Judgment[]; top: number }
@@ -194,7 +194,7 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
                       <span className="w-[52px] shrink-0 text-xs text-steel">{KIND_LABEL[a.cat] ?? a.cat}</span>
                       <span className="min-w-0 flex-1">
                         {a.indicators ? (
-                          <span className="flex flex-wrap gap-1">{a.indicators.map((h) => <span key={h.id} className="rounded-xs bg-surface px-1.5 py-0.5 text-[13px] text-charcoal"><span className="mr-1 font-mono text-[11px] text-stone">{h.level}</span>{h.label}</span>)}</span>
+                          <span className="flex flex-wrap gap-1">{a.indicators.map((h) => <span key={h.id} title={signalOf(h.id)?.intro} className="rounded-xs bg-surface px-1.5 py-0.5 text-[13px] text-charcoal">{h.label}</span>)}</span>
                         ) : <span className={cn('block text-sm', isOpen ? 'font-semibold' : 'font-medium')}>{a.title}</span>}
                       </span>
                       {a.tone === 'relief' && !a.auto ? <Tag tone="green">好消息</Tag> : null}
