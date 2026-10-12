@@ -1,9 +1,10 @@
 /** 跨页面复用的业务组件：走势图、等级说明、异动正文、判断卡。 */
 import type { ReactNode } from 'react'
-import { evalLine, fmtDate, grade, gradeReason, knownBars, myResult, PREF_LABEL, relatedEvents, signed, signClass, stockOf, whyLine, type Anomaly, type Judgment, type Pref } from './engine'
+import { evalLine, fmtDate, gradeReason, knownBars, myResult, PREF_LABEL, relatedEvents, signed, signClass, stockOf, whyLine, type Anomaly, type Judgment, type Pref } from './engine'
 import type { Vote } from './data/case'
 import { signalOf } from './data/signals'
 import { Button, cn, LevelTag, Stamp, Tag } from './kit'
+import { priorLessons } from './review'
 import { useStore, VOTE_LABEL } from './store'
 
 /** 近 40 个交易日收盘价；标出异动发生日，以及「跌破就算管家说对」的那条价格线。 */
@@ -19,13 +20,9 @@ export function PriceChart({ code, anomalies, judgment }: { code: string; anomal
   // 异动标记落在它出现前的最后一根日线上
   const marks = [...new Set(anomalies.map((a) => idx(a.after ?? prevOf(a.tick!))).filter((k) => k >= 0))]
   return (
+    <>
     <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`${stockOf(code).name}近 40 个交易日收盘价`}>
-      {judgment ? (
-        <>
-          <line x1={PAD} x2={W - PAD} y1={y(judgment.line)} y2={y(judgment.line)} stroke="var(--up)" strokeDasharray="4 4" strokeWidth="1" />
-          <text x={PAD} y={y(judgment.line) - 5} fontSize="12" fill="var(--up)">跌破 {judgment.line.toFixed(2)} 就算管家说对</text>
-        </>
-      ) : null}
+      {judgment ? <line x1={PAD} x2={W - PAD} y1={y(judgment.line)} y2={y(judgment.line)} stroke="var(--up)" strokeDasharray="4 4" strokeWidth="1.2" /> : null}
       <polyline fill="none" stroke="var(--ink)" strokeWidth="1.6" strokeLinejoin="round" points={bars.map((b, i) => `${x(i)},${y(b.c)}`).join(' ')} />
       {marks.map((k) => (
         <g key={k}>
@@ -35,16 +32,20 @@ export function PriceChart({ code, anomalies, judgment }: { code: string; anomal
       ))}
       <circle cx={x(bars.length - 1)} cy={y(bars[bars.length - 1].c)} r="3.5" fill="var(--ink)" />
     </svg>
+    {/* 说明文字放在图外，手机上也看得清 */}
+    {judgment ? <p className="mt-1 text-xs text-up"><span aria-hidden="true">┄┄ </span>红色虚线：{judgment.line.toFixed(2)}。{judgment.status === 'hit' ? '已经跌破，管家说对了。' : judgment.status === 'pending' ? '收盘价跌破它，就算管家说对。' : '到期没有跌破。'}</p> : null}
+    </>
   )
 }
 const prevOf = (d: string) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - 1); return t.toISOString().slice(0, 10) }
 
 /** 这条异动有多重要：先给一句话原因，想看细节再展开三项拆解；提醒多少可以就地改。 */
-export function GradeBox({ strength, code }: { strength: number; code: string }) {
-  const { prefs, setPref, weightOf, hasHoldings, openMe } = useStore()
+export function GradeBox({ a, code }: { a: Anomaly; code: string }) {
+  const { prefs, setPref, weightOf, hasHoldings, openMe, gradeOf, profile } = useStore()
   const pref = prefs[code] ?? 'normal'
   const w = weightOf(code)
-  const g = grade(strength, w, pref)
+  const g = gradeOf(a, code)
+  const strength = a.strength
   const Row = ({ label, pct, tone, value }: { label: string; pct: number; tone: string; value: ReactNode }) => (
     <>
       <span className="text-steel">{label}</span>
@@ -61,8 +62,9 @@ export function GradeBox({ strength, code }: { strength: number; code: string })
           <Row label="事件影响" pct={strength} tone="bg-up" value={strength} />
           <Row label="你的仓位" pct={w == null ? 0 : (w / 0.25) * 100} tone="bg-ink" value={w == null ? <span className="text-stone">未填</span> : w ? `${(w * 100).toFixed(0)}%` : '没有持仓'} />
           <Row label="提醒偏好" pct={pref === 'focus' ? 100 : pref === 'normal' ? 60 : 25} tone="bg-primary" value={PREF_LABEL[pref]} />
+          <Row label="投资风格" pct={g.styleFactor > 1 ? 100 : g.styleFactor < 1 ? 35 : 60} tone="bg-primary" value={profile.horizon ? (g.styleFactor > 1 ? '上调' : g.styleFactor < 1 ? '下调' : '不调整') : <span className="text-stone">未设</span>} />
         </div>
-        <p className="mt-2 text-steel">三项相乘得 {g.score} 分：70 分以上为高，40 分以上为中。</p>
+        <p className="mt-2 text-steel">几项相乘得 {g.score} 分：70 分以上为高，40 分以上为中。</p>
         {hasHoldings ? null : <button type="button" onClick={() => openMe('holdings')} className="mt-1 text-link hover:underline">补充持仓后，会按你的仓位调整等级 →</button>}
       </details>
       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-hairline-soft pt-3 text-[13px]">
@@ -122,32 +124,22 @@ export function VoteButtons({ j }: { j: Judgment }) {
       {(['agree', 'disagree', 'watch'] as Vote[]).map((k) => (
         <Button key={k} size="xs" variant={v === k ? 'primary' : k === 'watch' ? 'ghost' : 'secondary'} aria-pressed={v === k} onClick={() => vote(j.id, k, j.text, j.code)}>{VOTE_LABEL[k]}</Button>
       ))}
-      <span className="text-xs text-steel">{v ? '记下了，到期一起对答案' : '你怎么看？到期一起对答案'}</span>
+      <span className="text-xs text-steel">{v ? '记下了' : '到期一起对答案'}</span>
     </div>
   )
 }
 
-/** 事后复盘：为什么对或错、漏看了什么、以后怎么改 */
-export function ReviewBlock({ j }: { j: Judgment }) {
-  if (!j.review) return null
-  return (
-    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-md bg-surface-soft p-3 text-[13px] text-charcoal">
-      <dt className="text-steel">{j.status === 'hit' ? '为什么说对了' : j.status === 'miss' ? '为什么说错了' : '为什么作废'}</dt><dd>{j.review.why}</dd>
-      <dt className="text-steel">当时漏看了</dt><dd>{j.review.missed}</dd>
-      <dt className="text-steel">以后怎么改</dt><dd>{j.review.lesson}</dd>
-    </dl>
-  )
-}
-
-/** 判断卡：一条到期能对答案的判断 + 存根（倒计时或结果印章）+ 我的表态 + 事后复盘。 */
+/** 判断卡：一条到期能对答案的判断 + 存根（倒计时或结果印章）+ 我的表态，并能进入和管家的复盘对话。 */
 export function JudgmentCard({ j, compact, onOpen }: { j: Judgment; compact?: boolean; onOpen?: () => void }) {
-  const { votes } = useStore()
+  const { votes, tick, lessons, reviewState, openReview } = useStore()
   const v = votes[j.id]
   const mine = myResult(j, v)
+  const prior = priorLessons(j, lessons)
+  const state = reviewState[j.id]
   const left = j.n - j.elapsed
   const sig = signalOf(j.anomaly.signal)
   return (
-    <div className="flex rounded-lg border border-hairline bg-canvas">
+    <div className="@container flex rounded-lg border border-hairline bg-canvas">
       <div className="min-w-0 flex-1 p-3.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <Tag>{sig?.name ?? j.anomaly.cat}</Tag>
@@ -158,10 +150,11 @@ export function JudgmentCard({ j, compact, onOpen }: { j: Judgment; compact?: bo
           : compact ? null : <p className="mt-1.5 text-sm font-semibold">{j.anomaly.title}</p>}
         <p className={cn('mt-1.5', compact ? 'text-sm text-charcoal' : 'text-[15px] leading-relaxed text-ink')}><span className="text-steel">管家认为：</span>{j.text}。</p>
         {compact ? null : (
-          <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px] text-charcoal">
+          <dl className="mt-2.5 grid gap-x-3 gap-y-0.5 text-[13px] text-charcoal @min-[440px]:grid-cols-[auto_1fr] @min-[440px]:gap-y-1 [&>dt]:mt-1.5 @min-[440px]:[&>dt]:mt-0">
             <dt className="text-steel">什么情况下作废</dt><dd>{j.invalid}</dd>
             <dt className="text-steel">哪天对答案</dt><dd className="tabular-nums">{j.dueDate ? `${fmtDate(j.dueDate)} 收盘后，或提前跌破时` : '—'}</dd>
-            <dt className="text-steel">这类信号以往</dt><dd>{evalLine(j.anomaly.signal)}</dd>
+            <dt className="text-steel">这类信号以往</dt><dd>{evalLine(j.anomaly.signal, tick)}</dd>
+            {prior.length ? <><dt className="text-steel">参考的经验</dt><dd>{prior.slice(0, 2).map((l) => l.text).join(' ')}{prior.length > 2 ? ` 等 ${prior.length} 条` : ''}</dd></> : null}
           </dl>
         )}
         {j.latest != null ? (
@@ -171,17 +164,25 @@ export function JudgmentCard({ j, compact, onOpen }: { j: Judgment; compact?: bo
           </p>
         ) : null}
         {j.status === 'void' && j.voidOn ? <p className="mt-2 text-[13px] text-steel">{j.voidOn.text}</p> : null}
-        {j.status === 'pending' ? <div className="mt-3"><VoteButtons j={j} /></div> : (
+        {j.status === 'pending' ? (
+          <div className="mt-3">
+            <VoteButtons j={j} />
+            <button type="button" onClick={() => openReview(j.id)} className="mt-2 block text-[13px] text-link hover:underline">想说说理由？和管家聊聊这条 →</button>
+          </div>
+        ) : (
           <>
             <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-steel">
               <span>管家 <b className="font-medium text-ink">{j.status === 'hit' ? '✓ 说对了' : j.status === 'miss' ? '✗ 说错了' : '不计入'}</b></span>
               <span>我 <b className="font-medium text-ink">{v ? VOTE_LABEL[v] : '没表态'}{mine == null ? '' : mine ? ' ✓' : ' ✗'}</b></span>
             </div>
-            <ReviewBlock j={j} />
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <Button size="xs" variant={state ? 'secondary' : 'dark'} onClick={() => openReview(j.id)}>{state ? '看复盘对话' : '和管家复盘这条'} →</Button>
+              <span className="text-xs text-steel">{state === 'kept' ? '已复盘 · 经验已记进长期记忆' : state ? '已复盘' : '还没复盘：看看为什么，记下经验'}</span>
+            </div>
           </>
         )}
       </div>
-      <div className="flex w-[84px] shrink-0 flex-col items-center justify-center gap-0.5 border-l border-dashed border-hairline-strong px-1 text-center text-[11px] text-steel">
+      <div className="flex w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 border-l border-dashed border-hairline-strong px-1 text-center text-[11px] text-steel @min-[440px]:w-[84px]">
         {j.status === 'pending'
           ? <><b className="text-[22px] font-semibold leading-none tracking-tight text-ink tabular-nums">{left}</b><span>个交易日后<br />对答案</span></>
           : <><Stamp status={j.status} /><span className="mt-1.5 tabular-nums">{fmtDate(j.settledOn!)}</span></>}

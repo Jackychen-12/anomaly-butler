@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { TICKS } from './data/case'
-import { anomaliesAt, fmtDate, isFresh, PRICE_SOURCE, shortDate } from './engine'
+import { useState } from 'react'
+import { ClipboardCheck, House, Radar, Star, User, type LucideIcon } from 'lucide-react'
+import { anomaliesAt, fmtDate, isFresh, judgmentsAt, PRICE_SOURCE, weekday } from './engine'
 import { Button, cn } from './kit'
+import { profileLabel, profileSet } from './profile'
+import { unreviewed } from './review'
 import { useStore, type Page } from './store'
 import { TodayPage } from './pages/Today'
 import { WatchPage } from './pages/Watch'
@@ -9,40 +11,67 @@ import { ReviewPage } from './pages/Review'
 import { SignalsPage } from './pages/Signals'
 import { MePage } from './pages/Me'
 
-const NAV: { key: Page; label: string }[] = [
-  { key: 'today', label: '今日' }, { key: 'watch', label: '自选' }, { key: 'review', label: '复盘' }, { key: 'signals', label: '信号库' }, { key: 'me', label: '我的' },
+const NAV: { key: Page; label: string; icon: LucideIcon }[] = [
+  { key: 'today', label: '今日', icon: House }, { key: 'watch', label: '自选', icon: Star }, { key: 'review', label: '复盘', icon: ClipboardCheck },
+  { key: 'signals', label: '信号库', icon: Radar }, { key: 'me', label: '我的', icon: User },
 ]
 
+/** PC：左侧导航栏 + 右侧内容；手机：顶栏 + 内容 + 底部标签栏。 */
 export function App() {
-  const { page, setPage, onboarded, setOnboarded } = useStore()
-  const main = useRef<HTMLElement>(null)
-  // 换页面后回到顶部
-  useEffect(() => { if (main.current) main.current.scrollTop = 0 }, [page])
+  const { page, setPage, onboarded, setOnboarded, tick, prevTick, reviewState, profile, openMe } = useStore()
+  // 导航上的数字：今天新出现的异动、还没复盘的判断
+  const badge: Partial<Record<Page, number>> = {
+    today: anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick)).length,
+    review: unreviewed(judgmentsAt(tick), reviewState).length,
+  }
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-hairline px-4">
+    <div className="flex h-full flex-col lg:flex-row">
+      <aside className="hidden w-[208px] shrink-0 flex-col border-r border-hairline bg-surface px-2 py-3 lg:flex">
+        <button type="button" onClick={() => setPage('today')} className="mb-3 flex items-center gap-2.5 px-2.5 py-1.5 text-left">
+          <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-ink text-xs font-semibold text-canvas">异</span>
+          <span className="text-sm font-semibold">异动管家</span>
+        </button>
+        <nav className="flex flex-col gap-0.5" aria-label="主导航">
+          {NAV.map(({ key, label, icon: Icon }) => (
+            <button key={key} type="button" onClick={() => setPage(key)} aria-current={page === key ? 'page' : undefined}
+              className={cn('flex h-9 w-full items-center gap-2.5 rounded-sm px-2.5 text-sm text-slate transition-colors hover:bg-hover hover:text-ink', page === key && 'bg-hover font-medium text-ink')}>
+              <Icon className="h-4 w-4 shrink-0" /><span>{label}</span>
+              {badge[key] ? <span className={cn('ml-auto rounded-xs px-1.5 text-xs font-medium tabular-nums', key === 'review' ? 'bg-tint-lavender text-on-lavender' : 'bg-tint-rose text-on-rose')} title={key === 'review' ? '还没复盘的判断' : '今天新出现的异动'}>{badge[key]}</span> : null}
+            </button>
+          ))}
+        </nav>
+        <div className="mt-auto px-2.5 text-xs leading-relaxed text-steel">
+          <button type="button" onClick={() => openMe('settings')} className="mb-2.5 block w-full rounded-md border border-hairline bg-canvas px-2.5 py-2 text-left hover:bg-surface-soft">
+            <span className="block text-[11px] text-steel">我的画像</span>
+            <span className="block text-[13px] font-medium text-ink">{profileSet(profile) ? profileLabel(profile) : '去设置 →'}</span>
+          </button>
+          <p className="font-medium text-slate">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
+          <p className="mt-1">演示数据，不构成投资建议。</p>
+          <details className="mt-1">
+            <summary className="cursor-pointer hover:text-ink">数据说明</summary>
+            <p className="mt-1">行情：{PRICE_SOURCE}；事件为人工整理；示例持仓与预置表态、预置经验为模拟数据。</p>
+          </details>
+        </div>
+      </aside>
+
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-hairline px-4 lg:hidden">
         <button type="button" onClick={() => setPage('today')} className="flex items-center gap-2 font-semibold">
           <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-ink text-xs text-canvas">异</span>异动管家
         </button>
-        <nav className="hidden items-center gap-0.5 lg:flex" aria-label="主导航">
-          {NAV.map((n) => (
-            <button key={n.key} type="button" onClick={() => setPage(n.key)} aria-current={page === n.key ? 'page' : undefined}
-              className={cn('h-8 rounded-sm px-3 text-sm text-slate hover:bg-hover', page === n.key && 'bg-hover font-medium text-ink')}>{n.label}</button>
-          ))}
-        </nav>
-        <span className="ml-auto text-xs text-steel">演示 · 案例回放</span>
+        <span className="ml-auto text-xs text-steel">{fmtDate(tick)} {weekday(tick)} · 演示数据</span>
       </header>
-      <Replay />
-      <main ref={main} className="min-h-0 flex-1 overflow-y-auto">
+
+      <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {page === 'today' ? <TodayPage /> : page === 'watch' ? <WatchPage /> : page === 'review' ? <ReviewPage /> : page === 'signals' ? <SignalsPage /> : <MePage />}
-        <footer className="px-4 pb-6 pt-8 text-xs text-stone lg:px-6">
-          案例回放演示，不构成投资建议。行情：{PRICE_SOURCE}；事件为人工整理；示例持仓与预置表态为模拟数据。
-        </footer>
       </main>
+
       <nav className="flex shrink-0 border-t border-hairline bg-canvas pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="主导航">
-        {NAV.map((n) => (
-          <button key={n.key} type="button" onClick={() => setPage(n.key)} aria-current={page === n.key ? 'page' : undefined}
-            className={cn('flex-1 py-3 text-[13px] text-steel', page === n.key && 'font-semibold text-ink')}>{n.label}</button>
+        {NAV.map(({ key, label, icon: Icon }) => (
+          <button key={key} type="button" onClick={() => setPage(key)} aria-current={page === key ? 'page' : undefined}
+            className={cn('relative flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[11px] text-steel', page === key && 'font-semibold text-ink')}>
+            <Icon className="h-5 w-5" strokeWidth={page === key ? 2.2 : 1.8} />{label}
+            {badge[key] ? <span aria-label={`${badge[key]} 条`} className={cn('absolute right-[calc(50%-20px)] top-1 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 text-white', key === 'review' ? 'bg-primary' : 'bg-up')}>{badge[key]}</span> : null}
+          </button>
         ))}
       </nav>
       {onboarded ? null : <Onboarding onDone={() => setOnboarded(true)} />}
@@ -50,59 +79,10 @@ export function App() {
   )
 }
 
-/** 案例回放条：说清「你现在看到的是哪一天」，并给一个明显的「下一天」。 */
-function Replay() {
-  const { tick, setTick, prevTick, nextTick } = useStore()
-  const i = TICKS.indexOf(tick)
-  const [open, setOpen] = useState(false)
-  const active = useRef<HTMLButtonElement>(null)
-  // 当前日期滚到可见范围中间（手机上日期条可横向滚动）
-  useEffect(() => {
-    const el = active.current
-    const box = el?.closest<HTMLElement>('[data-scroll]')
-    if (el && box) box.scrollLeft = el.offsetLeft - box.clientWidth / 2 + el.clientWidth / 2
-  }, [tick, open])
-  return (
-    <div className="shrink-0 border-b border-hairline bg-surface-soft px-4 py-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <p className="min-w-0 flex-1 text-[13px] text-slate">
-          <span className="font-medium text-ink"><span className="sm:hidden">回放：{fmtDate(tick)} 早上</span><span className="hidden sm:inline">案例回放：你现在看到的是 {fmtDate(tick)} 早上</span></span>
-          <span className="hidden md:inline"> · 2025 年 4 月关税冲击的真实历史，只显示这一刻之前已经发生的事</span>
-        </p>
-        <div className="flex items-center gap-1.5">
-          <Button size="xs" variant="ghost" disabled={!prevTick} onClick={() => prevTick && setTick(prevTick)}>← 前一天</Button>
-          <Button size="xs" variant="primary" disabled={!nextTick} onClick={() => nextTick && setTick(nextTick)}>下一天 →</Button>
-          <Button size="xs" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起日期' : '选日期'}</Button>
-        </div>
-      </div>
-      {open ? (
-        <div data-scroll className="no-scrollbar -mx-4 mt-2 overflow-x-auto px-4 pb-1">
-          <div className="relative flex min-w-[640px]">
-            <span aria-hidden="true" className="absolute left-0 right-0 top-[6px] h-0.5 bg-hairline-strong" />
-            {TICKS.map((t, k) => {
-              const alert = anomaliesAt(t).some((a) => isFresh(a, t, TICKS[k - 1]) && a.tone === 'risk' && a.strength >= 70)
-              return (
-                <button key={t} ref={t === tick ? active : undefined} type="button" onClick={() => setTick(t)} aria-pressed={t === tick}
-                  className={cn('relative flex flex-1 flex-col items-center gap-1 text-xs tabular-nums', t === tick ? 'font-semibold text-ink' : 'text-steel hover:text-ink')}>
-                  <span className={cn('h-3.5 w-3.5 rounded-full border-2',
-                    t === tick ? 'border-primary bg-primary ring-4 ring-tint-lavender' : k < i ? 'border-hairline-strong bg-hairline-strong' : 'border-hairline-strong bg-canvas',
-                    alert && t !== tick && 'border-up')} />
-                  {shortDate(t)}
-                </button>
-              )
-            })}
-          </div>
-          <p className="mt-1.5 text-xs text-steel">红圈表示那天有影响较大的事件。</p>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 const STEPS = [
-  { title: '管家帮你盯着自选股', body: '有事情可能影响到你的自选股时，管家会告诉你三件事：发生了什么、为什么和你有关、它怎么看。你不用自己在一堆行情和新闻里找。' },
-  { title: '每个看法到期都能对答案', body: '管家的看法会写成一句能验证的话，比如「5 个交易日内会跌破 34.97」。你可以表态同意或不同意，到期按真实价格看谁对。说对说错，管家都会写原因。' },
-  { title: '现在是一段真实历史的回放', body: '为了让你马上看到完整过程，这里回放的是 2025 年 4 月关税冲击那两周。你从 4 月 3 日早上开始，点上方的「下一天」，看后来发生了什么。' },
+  { title: '管家帮你盯着自选股', body: '首页两张图：每只自选股和每个板块的涨跌，有异动的会打上圆点。下面是今天和你有关的事。' },
+  { title: '每个看法到期都能对答案', body: '管家的看法写成一句能验证的话，比如「5 个交易日内会跌破 34.97」，旁边的进度条显示离这个价格还有多远。你可以表态，到期看谁对。' },
+  { title: '说对说错，都一起复盘', body: '结果出来后和管家聊一遍，把经验记进长期记忆，下次同类情况会拿出来参考。在「我的」里设好投资画像，管家会按你的风格提醒。' },
 ]
 
 /** 首次打开的三步说明，可以跳过，之后能在「我的 → 设置」里重看。 */
@@ -115,6 +95,7 @@ function Onboarding({ onDone }: { onDone: () => void }) {
         <p className="eyebrow">第 {step + 1} 步，共 {STEPS.length} 步</p>
         <h2 className="mt-1.5 text-xl font-semibold tracking-tight">{s.title}</h2>
         <p className="mt-2 text-[15px] leading-relaxed text-charcoal">{s.body}</p>
+        {step === STEPS.length - 1 ? <p className="mt-2 text-[13px] text-steel">目前展示的是演示数据，行情和事件都是真实发生过的。</p> : null}
         <div className="mt-5 flex items-center gap-2">
           <Button variant="ghost" size="md" onClick={onDone}>跳过</Button>
           <span className="ml-auto" />

@@ -1,6 +1,6 @@
 /** 异动识别、分级与判断结算。所有函数都只使用「当前时间刻度之前」的数据。 */
 import raw from './data/prices.json'
-import { AUTO_JUDGMENTS, EVENTS, REVIEWS, STOCKS, type Category, type EventDef, type JudgmentDef, type Review, type Stock, type Vote } from './data/case'
+import { AUTO_JUDGMENTS, EVENTS, REVIEWS, SECTORS, STOCKS, type Category, type EventDef, type JudgmentDef, type Review, type Stock, type Vote } from './data/case'
 import { SIGNAL_GROUPS, SIGNALS, signalOf, type SignalDef } from './data/signals'
 
 export type Bar = { d: string; o: number; c: number; h: number; l: number; v: number; p: number }
@@ -15,9 +15,26 @@ export const lastBar = (code: string, tick: string): Bar => { const k = knownBar
 // ── 格式 ────────────────────────────────────────────────
 export const signed = (v: number, digits = 2) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}`
 export const fmtDate = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`
-export const shortDate = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
+const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+export const weekday = (d: string) => WEEK[new Date(d + 'T00:00:00Z').getUTCDay()]
 export const signClass = (v: number) => (v > 0 ? 'text-up' : v < 0 ? 'text-down' : 'text-ink')
 function nextDay(d: string) { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10) }
+
+/** 最近 n 个交易日的累计涨跌幅（%） */
+export function changeOver(code: string, tick: string, n: number): number {
+  const k = knownBars(code, tick)
+  const last = k[k.length - 1], base = k[k.length - 1 - n]
+  return base ? (last.c / base.c - 1) * 100 : last.p
+}
+export type SectorRow = { sector: string; codes: string[]; change: number; weight: number; impact: number }
+/** 按板块汇总自选股：板块涨跌取成员的简单平均；weight 是用户在该板块的仓位，impact 是它对总资产的影响（百分点） */
+export function sectorRows(tick: string, n: number, holdings: Record<string, number>): SectorRow[] {
+  return SECTORS.map((sector) => {
+    const members = STOCKS.filter((s) => s.sector === sector)
+    const ch = members.map((s) => ({ code: s.code, c: changeOver(s.code, tick, n), w: holdings[s.code] ?? 0 }))
+    return { sector, codes: members.map((s) => s.code), change: ch.reduce((a, x) => a + x.c, 0) / ch.length, weight: ch.reduce((a, x) => a + x.w, 0), impact: ch.reduce((a, x) => a + x.w * x.c, 0) }
+  })
+}
 
 // ── 异动 ────────────────────────────────────────────────
 export type Anomaly = Omit<EventDef, 'tick'> & { tick?: string; after?: string; auto: boolean; sortKey: string }
@@ -68,14 +85,17 @@ export type Pref = 'focus' | 'normal' | 'mute'
 export const PREF_LABEL: Record<Pref, string> = { focus: '多提醒我', normal: '正常', mute: '少提醒我' }
 const PREF_FACTOR: Record<Pref, number> = { focus: 1.25, normal: 1, mute: 0.6 }
 export type Level = '高' | '中' | '低'
-export type Grade = { score: number; level: Level; strength: number; weightFactor: number | null; prefFactor: number }
+export type Grade = { score: number; level: Level; strength: number; weightFactor: number | null; prefFactor: number; styleFactor: number }
 
-/** weight 传 null 表示用户还没补充持仓，此时持仓不参与（系数 1）；补充后重仓放大、未持仓缩小。 */
-export function grade(strength: number, weight: number | null, pref: Pref): Grade {
+/**
+ * weight 传 null 表示用户还没补充持仓，此时持仓不参与（系数 1）；补充后重仓放大、未持仓缩小。
+ * style 是按用户投资风格得出的系数（见 profile.ts），没设画像时为 1。
+ */
+export function grade(strength: number, weight: number | null, pref: Pref, style = 1): Grade {
   const weightFactor = weight == null ? null : Math.min(1.4, 0.6 + weight * 4)
   const prefFactor = PREF_FACTOR[pref]
-  const score = Math.min(100, Math.round(strength * (weightFactor ?? 1) * prefFactor))
-  return { score, level: score >= 70 ? '高' : score >= 40 ? '中' : '低', strength, weightFactor, prefFactor }
+  const score = Math.min(100, Math.round(strength * (weightFactor ?? 1) * prefFactor * style))
+  return { score, level: score >= 70 ? '高' : score >= 40 ? '中' : '低', strength, weightFactor, prefFactor, styleFactor: style }
 }
 /** 等级的一句话原因，给第一次用的人看 */
 export function gradeReason(g: Grade): string {
@@ -83,6 +103,8 @@ export function gradeReason(g: Grade): string {
   if (g.weightFactor != null) parts.push(g.weightFactor > 1.05 ? '你的仓位重' : g.weightFactor < 0.95 ? '你的仓位轻或没有持仓' : '你的仓位适中')
   if (g.prefFactor > 1) parts.push('你要求多提醒')
   if (g.prefFactor < 1) parts.push('你要求少提醒')
+  if (g.styleFactor > 1) parts.push('符合你的短线风格')
+  if (g.styleFactor < 1) parts.push('你是长线，短期波动少提醒')
   return parts.join('，')
 }
 
@@ -172,17 +194,20 @@ export function myResult(j: Judgment, v: Vote | undefined): boolean | null {
 }
 
 // ── 事后：已发生异动的解读 ───────────────────────────────
-/** 价量异动前后几天内，命中同一只股票的宏观或公司事件，用来解释「为什么涨跌」。 */
+/**
+ * 解释一条价量异动：往前几天内、在它发生之前就已出现、方向一致（跌对应利空，涨对应好消息）、
+ * 且命中同一只股票的宏观或公司事件。
+ */
 export function relatedEvents(a: Anomaly, tick: string): Anomaly[] {
   if (!a.auto) return []
-  const from = shiftDay(a.after!, -5), to = shiftDay(a.after!, 1)
-  return anomaliesAt(tick).filter((e) => !e.auto && e.tick! > from && e.tick! <= to && e.hits.some((c) => a.hits.includes(c)))
+  const from = shiftDay(a.after!, -5)
+  return anomaliesAt(tick).filter((e) => !e.auto && e.tone === a.tone && e.tick! >= from && e.tick! <= a.after! && e.hits.some((c) => a.hits.includes(c)))
 }
 /** 同一时间段内影响全市场的大事件（没有直接点名这只股票），作为次一级的解释。 */
 export function marketEvents(a: Anomaly, tick: string): Anomaly[] {
   if (!a.auto) return []
-  const from = shiftDay(a.after!, -5), to = shiftDay(a.after!, 1)
-  return anomaliesAt(tick).filter((e) => !e.auto && e.cat === '宏观政策' && e.strength >= 80 && e.tick! > from && e.tick! <= to && !e.hits.some((c) => a.hits.includes(c)))
+  const from = shiftDay(a.after!, -5)
+  return anomaliesAt(tick).filter((e) => !e.auto && e.cat === '宏观政策' && e.tone === a.tone && e.strength >= 55 && e.tick! >= from && e.tick! <= a.after! && !e.hits.some((c) => a.hits.includes(c)))
 }
 /** 一句话解释一条价量异动的原因 */
 export function whyLine(a: Anomaly, tick: string): string {
@@ -195,7 +220,6 @@ export function whyLine(a: Anomaly, tick: string): string {
 function shiftDay(d: string, n: number) { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10) }
 
 // ── 信号库评测 ──────────────────────────────────────────
-const CASE_END = '2025-05-01'
 const FWD = 5, CONT = -5
 export type RuleEval = { kind: 'rule'; n: number; cont: number; avg5: number; samples: { code: string; d: string; p: number; fwdMin: number; fwd5: number }[] }
 export type EventEval = { kind: 'event'; n: number; hit: number; miss: number; void: number; pending: number }
@@ -206,15 +230,15 @@ const RULE: Record<string, (b: Bar, volRatio: number) => boolean> = {
   'price-drop-vol': (b, r) => b.p <= -AUTO_PCT && r >= 2,
   'price-surge': (b) => b.p >= AUTO_PCT,
 }
-/** 规则类信号：在全部自选股的日线上回测；事件类信号：统计案例内的判断结果。 */
-export function evaluateSignal(id: string): SignalEval {
+/** 规则类信号：在全部自选股的日线上回测；事件类信号：统计已发出的判断结果。都只用 tick 之前的数据。 */
+export function evaluateSignal(id: string, tick: string): SignalEval {
   const def = signalOf(id)
   // 规划中的信号没有数据；只提醒不判断的事件类信号没有可对答案的样本
   if (!def || def.kind === 'planned' || (def.kind === 'event' && !def.judges)) return null
   if (def.kind === 'rule') {
     const samples: RuleEval['samples'] = []
     for (const s of STOCKS) {
-      const bars = PRICES[s.code]
+      const bars = knownBars(s.code, tick)
       bars.forEach((b, i) => {
         if (i + FWD >= bars.length) return // 后面不足 5 个交易日的不计入
         const prev = bars.slice(Math.max(0, i - 20), i)
@@ -227,16 +251,22 @@ export function evaluateSignal(id: string): SignalEval {
     samples.sort((a, b) => (a.d < b.d ? 1 : -1))
     return { kind: 'rule', n: samples.length, cont: samples.filter((x) => x.fwdMin <= CONT).length, avg5: samples.length ? samples.reduce((a, x) => a + x.fwd5, 0) / samples.length : 0, samples }
   }
-  const js = judgmentsAt(CASE_END).filter((j) => j.anomaly.signal === id)
+  const js = judgmentsAt(tick).filter((j) => j.anomaly.signal === id)
   const count = (st: Status) => js.filter((j) => j.status === st).length
   return { kind: 'event', n: js.length, hit: count('hit'), miss: count('miss'), void: count('void'), pending: count('pending') }
 }
 /** 判断卡上的「同类信号过去怎么样」一句话 */
-export function evalLine(id: string): string {
-  const e = evaluateSignal(id)
+export function evalLine(id: string, tick: string): string {
+  const e = evaluateSignal(id, tick)
   if (!e) return '暂无评测'
   if (e.kind === 'rule') return e.n ? `回测触发 ${e.n} 次，其中 ${e.cont} 次之后 5 日内又跌了 5% 以上` : '回测区间内没有触发'
-  return e.n ? `本案例内共 ${e.n} 条判断：说对 ${e.hit}，说错 ${e.miss}${e.void ? `，作废 ${e.void}` : ''}${e.pending ? `，未到期 ${e.pending}` : ''}` : '本案例内没有判断样本'
+  return e.n ? `到目前共 ${e.n} 条判断：说对 ${e.hit}，说错 ${e.miss}${e.void ? `，作废 ${e.void}` : ''}${e.pending ? `，在等结果 ${e.pending}` : ''}` : '还没有判断样本'
+}
+
+/** 最近 days 天内有结果的判断，新的在前 */
+export function recentlySettled(tick: string, days = 7): Judgment[] {
+  const from = shiftDay(tick, -days)
+  return judgmentsAt(tick).filter((j) => j.status !== 'pending' && j.settledOn! >= from).sort((a, b) => (a.settledOn! < b.settledOn! ? 1 : -1))
 }
 
 /** 到当前时刻为止，各类信号的判断结果汇总（复盘页用） */
@@ -251,18 +281,18 @@ export function reviewBySignal(tick: string): { def: SignalDef; hit: number; mis
 
 const MKT: Record<string, string> = { A: 'A股', HK: '港股', US: '美股' }
 /** 信号库导出为 Markdown，作为课题交付物 */
-export function signalsMarkdown(): string {
+export function signalsMarkdown(tick: string): string {
   const lines = ['# 异动监测信息集', '', '每类信号分为「内容」和「评测」两部分。内容说明信号看什么、数据从哪来、怎样触发；评测说明它在历史数据上表现如何。', '',
-    `评测口径：规则类信号在 ${STOCKS.length} 只自选股 2025 年 1–4 月的真实日线上回测，「续跌」指触发后 ${FWD} 个交易日内最低收盘价较触发日再跌 ${Math.abs(CONT)}% 以上；事件类信号统计 2025 年 4 月关税冲击案例内的判断结果，样本量小，仅供参考。`, '']
+    `评测口径（截至 ${fmtDate(tick)}）：规则类信号在 ${STOCKS.length} 只自选股 2025 年以来的真实日线上回测，「续跌」指触发后 ${FWD} 个交易日内最低收盘价较触发日再跌 ${Math.abs(CONT)}% 以上；事件类信号统计已发出的判断结果。样本量小，仅供参考。`, '']
   for (const g of SIGNAL_GROUPS) {
     lines.push(`## ${g}`, '')
     for (const s of SIGNALS.filter((x) => x.group === g)) {
-      const e = evaluateSignal(s.id)
+      const e = evaluateSignal(s.id, tick)
       lines.push(`### ${s.name}`, '', `- 状态：${s.kind === 'planned' ? '规划中' : s.kind === 'rule' ? '已接入（规则自动识别）' : '已接入（人工整理事件）'}`,
         `- 定义：${s.define}`, `- 数据来源：${s.source}`, `- 触发规则：${s.rule}`, `- 适用市场：${s.markets.map((m) => MKT[m]).join('、')}`,
         `- 是否出判断：${s.judges ? '是' : '否'}`)
       if (e?.kind === 'rule') lines.push(`- 评测：触发 ${e.n} 次；续跌 ${e.cont} 次（${e.n ? Math.round((e.cont / e.n) * 100) : 0}%）；触发后 5 日平均涨跌 ${signed(e.avg5)}%`)
-      else if (e?.kind === 'event') lines.push(`- 评测：判断 ${e.n} 条；说对 ${e.hit}，说错 ${e.miss}，作废 ${e.void}，未到期 ${e.pending}`)
+      else if (e?.kind === 'event') lines.push(`- 评测：判断 ${e.n} 条；说对 ${e.hit}，说错 ${e.miss}，作废 ${e.void}，在等结果 ${e.pending}`)
       else lines.push(s.kind === 'planned' ? '- 评测：数据接入后才有' : '- 评测：只提醒、不出判断，没有可对答案的样本')
       lines.push('')
     }

@@ -1,23 +1,26 @@
 /**
- * 提问：默认用本地规则，根据当前回放时刻的数据拼出回答，离线可用；
+ * 提问：默认用本地规则，根据当前的数据拼出回答，离线可用；
  * 在「我的 → 设置」里接入模型接口后，改由模型回答（见 askLlm）。
  */
 import { STOCKS, type Vote } from './data/case'
 import { anomaliesAt, anomaliesOf, fmtDate, isFresh, judgmentsAt, judgmentsOf, lastBar, score, signed, stockOf } from './engine'
-import type { Llm, MeTab, Page } from './store'
+import { signalOf } from './data/signals'
+import type { Lesson, Llm, MeTab, Page } from './store'
 
-export type Link = { label: string; page?: Page; code?: string; me?: MeTab }
+/** 回答或提示后面可点的去处：某个页面、某只股票、「我的」里的某一栏，或某条判断的复盘对话 */
+export type Link = { label: string; page?: Page; code?: string; me?: MeTab; review?: string }
 export type Answer = { text: string[]; links: Link[] }
-export type AskCtx = { tick: string; prevTick?: string; votes: Record<string, Vote>; holdings: Record<string, number>; hasHoldings: boolean }
+export type AskCtx = { tick: string; prevTick?: string; votes: Record<string, Vote>; holdings: Record<string, number>; hasHoldings: boolean; lessons: Lesson[] }
 
-export const SUGGESTED = ['今天我要注意什么？', '管家以前说得准吗？', '我需要调仓吗？', '这个产品怎么用？']
+export const SUGGESTED = ['今天我要注意什么？', '你以前说得准吗？', '你记下了哪些经验？', '我需要调仓吗？']
 
 export function answerLocal(q: string, c: AskCtx): Answer {
   const stock = STOCKS.find((s) => q.includes(s.name.replace('-W', '')) || q.toUpperCase().includes(s.code))
   if (stock) return aboutStock(stock.code, c)
+  if (/经验|教训|学到|记下|记住|记得|长期记忆/.test(q)) return aboutLessons(c)
   if (/准|战绩|靠谱|对了|说对|可信/.test(q)) return aboutScore(c)
   if (/调仓|卖|减仓|怎么办|持仓|仓位/.test(q)) return aboutHoldings(c)
-  if (/怎么用|是什么|干什么|帮助|回放|什么意思/.test(q)) return help()
+  if (/怎么用|是什么|干什么|帮助|什么意思/.test(q)) return help()
   if (/今天|注意|发生|异动|风险|有什么/.test(q)) return aboutToday(c)
   return { text: ['这个问题我还答不好。你可以问我今天要注意什么、某只自选股怎么了、管家说得准不准，或者要不要调仓。'], links: [] }
 }
@@ -50,12 +53,22 @@ function aboutStock(code: string, c: AskCtx): Answer {
 function aboutScore(c: AskCtx): Answer {
   const sc = score(judgmentsAt(c.tick), c.votes)
   const n = sc.butler.hit + sc.butler.miss
-  if (!n) return { text: ['到现在为止还没有判断到期，暂时没法说准不准。点「下一天」往后看。'], links: [] }
+  if (!n) return { text: ['到现在为止还没有判断到期，暂时没法说准不准。'], links: [] }
   return {
     text: [`到 ${fmtDate(c.tick)} 为止，管家有 ${n} 条判断到期：说对 ${sc.butler.hit} 条，说错 ${sc.butler.miss} 条${sc.butler.void ? `，另有 ${sc.butler.void} 条因前提变化作废` : ''}。`,
-      '这个案例是一段市场大跌的时期，看跌的判断本来就容易说对，不能代表平时的水平。每条判断说对或说错的原因都写在复盘里。'],
+      '最近市场整体大跌，看跌的判断本来就容易说对，不能代表平时的水平。每条判断说对或说错的原因都写在复盘里。'],
     links: [{ label: '看复盘', page: 'review' }, { label: '看各类信号的评测', page: 'signals' }],
   }
+}
+
+function aboutLessons(c: AskCtx): Answer {
+  if (!c.lessons.length) return { text: ['长期记忆里还没有经验。判断出结果后，我们一起复盘，说对说错都会总结一条记下来。'], links: [{ label: '去复盘', page: 'review' }] }
+  const bySignal = new Map<string, Lesson[]>()
+  for (const l of c.lessons) bySignal.set(l.signal, [...(bySignal.get(l.signal) ?? []), l])
+  const text = [`长期记忆里有 ${c.lessons.length} 条经验，其中 ${c.lessons.filter((l) => l.by === 'me').length} 条是你写的。`]
+  for (const [sig, ls] of bySignal) text.push(`「${signalOf(sig)?.name ?? sig}」：${ls.map((l) => l.text).join(' ')}`)
+  text.push('以后同类信号再出现，我会先把对应的经验拿出来参考。')
+  return { text, links: [{ label: '看全部经验', me: 'memory' }, { label: '去复盘', page: 'review' }] }
 }
 
 function aboutHoldings(c: AskCtx): Answer {
@@ -73,18 +86,19 @@ function help(): Answer {
   return {
     text: ['我帮你盯着自选股。有事情可能影响到它们时，我会告诉你发生了什么、为什么和你有关，并给出一条到期能对答案的判断。',
       '你可以表态同意或不同意，到期我们一起看谁对。说对说错我都会写复盘。',
-      '现在是案例回放：这是 2025 年 4 月的一段真实历史。点上方的「下一天」，看后来发生了什么。'],
+      '目前展示的是演示数据，行情和事件都是真实发生过的。'],
     links: [{ label: '看自选', page: 'watch' }, { label: '看信号库', page: 'signals' }],
   }
 }
 
-/** 调用用户自己配置的模型接口（OpenAI 兼容的 chat/completions）。只把当前回放时刻已知的信息交给模型。 */
+/** 调用用户自己配置的模型接口（OpenAI 兼容的 chat/completions）。只把当前已知的信息交给模型。 */
 export async function askLlm(q: string, c: AskCtx, llm: Llm): Promise<string> {
   const context = {
-    回放时刻: `${c.tick} 08:30`,
+    当前时间: `${c.tick} 08:30（开盘前）`,
     自选: STOCKS.map((s) => { const b = lastBar(s.code, c.tick); return { 名称: s.name, 代码: s.symbol, 最近收盘: b.c, 涨跌幅: b.p, 持仓占比: c.hasHoldings ? c.holdings[s.code] ?? 0 : '未填' } }),
     异动: anomaliesAt(c.tick).slice(0, 12).map((a) => ({ 标题: a.title, 时间: a.when, 类型: a.cat, 影响: a.hits.map((h) => stockOf(h).name), 说明: a.chain.map((x) => x.text) })),
     判断: judgmentsAt(c.tick).map((j) => ({ 内容: j.text, 状态: j.status, 作废条件: j.invalid, 复盘: j.review })),
+    长期记忆里的经验: c.lessons.map((l) => ({ 信号: signalOf(l.signal)?.name ?? l.signal, 内容: l.text, 谁写的: l.by === 'me' ? '用户' : '管家' })),
   }
   const res = await fetch(llm.url.replace(/\/$/, '') + '/chat/completions', {
     method: 'POST',
@@ -92,7 +106,7 @@ export async function askLlm(q: string, c: AskCtx, llm: Llm): Promise<string> {
     body: JSON.stringify({
       model: llm.model,
       messages: [
-        { role: 'system', content: '你是「异动管家」，帮用户盯自选股的异动。只根据给出的资料回答，资料里没有的就说不知道；不要使用回放时刻之后的信息。用大白话，三五句话以内。不给出具体买卖指令，涉及调仓时只说明选择和代价。' },
+        { role: 'system', content: '你是「异动管家」，帮用户盯自选股的异动。只根据给出的资料回答，资料里没有的就说不知道；不要使用当前时间之后的信息。用大白话，三五句话以内。不给出具体买卖指令，涉及调仓时只说明选择和代价。' },
         { role: 'user', content: `资料：${JSON.stringify(context)}\n\n问题：${q}` },
       ],
     }),
