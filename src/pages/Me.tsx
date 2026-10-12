@@ -13,9 +13,11 @@ import { reasonStats } from '../review'
 import { Button, cn, LevelTag } from '../kit'
 import { Scroll } from '../layout'
 import { useStore, type Memory, type MeTab } from '../store'
+import { ObservedPanel } from './Observed'
 import { ProfileTab } from './Profile'
 
-const TABS: { key: MeTab; label: string }[] = [{ key: 'profile', label: '投资画像' }, { key: 'holdings', label: '持仓' }, { key: 'memory', label: '长期记忆' }, { key: 'settings', label: '管家设置' }]
+// 管家设置排在最前，然后才是画像、持仓、长期记忆
+const TABS: { key: MeTab; label: string }[] = [{ key: 'settings', label: '管家设置' }, { key: 'profile', label: '投资画像' }, { key: 'holdings', label: '持仓' }, { key: 'memory', label: '长期记忆' }]
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`
 
 export function MePage() {
@@ -30,7 +32,7 @@ export function MePage() {
             className={cn('-mb-px h-9 border-b-2 px-3 text-sm', meTab === t.key ? 'border-ink font-medium text-ink' : 'border-transparent text-steel hover:text-ink')}>{t.label}</button>
         ))}
       </div>
-      {meTab === 'holdings' ? <Holdings /> : meTab === 'memory' ? <MemoryList /> : meTab === 'profile' ? <ProfileTab /> : <AgentSettings />}
+      {meTab === 'holdings' ? <Holdings /> : meTab === 'memory' ? <><ObservedPanel /><MemoryList /></> : meTab === 'profile' ? <ProfileTab /> : <AgentSettings />}
     </div>
     </Scroll>
   )

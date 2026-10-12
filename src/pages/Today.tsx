@@ -4,7 +4,7 @@
  * 再往下是「提前看」（未来几天可能明显涨跌的自选股）和最近有结果的判断。右边是提问栏，窄屏时收进底部输入条。
  */
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, MessageCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, MessageCircle } from 'lucide-react'
 import { AskPanel, useGo } from '../ask'
 import { DivergingBars, JudgmentMeter, type BarRow } from '../charts'
 import { STOCKS } from '../data/case'
@@ -229,7 +229,7 @@ function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level;
   const [open, setOpen] = useState(!compact)
   const relief = a.tone === 'relief'
   if (!open) {
-    // 近几天的事：先收成一行，标题 + 管家的判断走到哪了
+    // 收起时是一行：标题 + 管家的判断走到哪了；点一下展开
     const j = judgments[0]
     return (
       <article className="rounded-lg border border-hairline">
@@ -237,7 +237,7 @@ function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level;
           <LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}
           <span className="order-last min-w-0 basis-full text-sm font-medium sm:order-none sm:flex-1 sm:basis-0 sm:truncate">{a.title}</span>
           <span className="ml-auto shrink-0 text-xs text-steel sm:ml-0">{j ? `${stockOf(j.code).name} ${j.up ? '看涨' : '看跌'} · ${j.status === 'pending' ? '在等结果' : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}` : a.when}</span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-stone" />
+          <span className="flex shrink-0 items-center gap-0.5 text-xs text-steel">展开<ChevronDown className="h-4 w-4" /></span>
         </button>
       </article>
     )
@@ -245,7 +245,9 @@ function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level;
   return (
     <article className="rounded-lg border border-hairline">
       <div className="px-3.5 pb-3 pt-3">
-        <div className="flex flex-wrap items-center gap-1.5"><LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}<span className="text-xs text-steel">{a.when}</span></div>
+        <div className="flex flex-wrap items-center gap-1.5"><LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}<span className="text-xs text-steel">{a.when}</span>
+          <button type="button" onClick={() => setOpen(false)} aria-expanded={true} className="-my-1 -mr-1.5 ml-auto flex h-7 items-center gap-0.5 rounded-sm px-1.5 text-xs text-steel hover:bg-hover hover:text-ink">收起<ChevronUp className="h-4 w-4" /></button>
+        </div>
         <h3 className="mb-2.5 mt-1.5 text-[17px] font-semibold leading-snug tracking-tight">{a.title}</h3>
         <PathTree a={a} judged={judgments.map((j) => j.code)} />
       </div>
@@ -280,10 +282,15 @@ function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments:
   const { tick, openReview, profile } = useStore()
   // 画像里选了「新手」：每只股票最主要的那个指标多给一句名词解释
   const novice = profile.experience === 'new'
+  const [open, setOpen] = useState(true)
   return (
     <article className="rounded-lg border border-hairline">
-      <h3 className="px-3.5 pb-2 pt-3 text-[17px] font-semibold leading-snug tracking-tight">{moves.length} 只自选股的行情指标有异动</h3>
-      <ul>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className={cn('flex w-full items-center gap-2 px-3.5 pt-3 text-left', open ? 'pb-2' : 'pb-3')}>
+        <h3 className="min-w-0 flex-1 text-[17px] font-semibold leading-snug tracking-tight">{moves.length} 只自选股的行情指标有异动</h3>
+        <span className="flex shrink-0 items-center gap-0.5 text-xs text-steel">{open ? '收起' : '展开'}{open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
+      </button>
+      {open ? null : <p className="flex flex-wrap gap-1.5 px-3.5 pb-3">{moves.map((a) => <StockChip key={a.id} code={a.hits[0]} />)}</p>}
+      <ul className={open ? '' : 'hidden'}>
         {moves.map((a) => {
           const j = judgments.find((x) => x.anomaly.id === a.id)
           return (

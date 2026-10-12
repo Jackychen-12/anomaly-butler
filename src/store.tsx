@@ -127,7 +127,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // 引擎按当前规则识别异动；放在渲染里同步应用，保证下面的页面读到的是新规则的结果
   configure(saved.rules)
   const [page, setPageState] = useState<Page>(pageFromHash)
-  const [meTab, setMeTab] = useState<MeTab>('profile')
+  const [meTab, setMeTab] = useState<MeTab>('settings')
   const [code, setCode] = useState<string | null>(null)
   const [chat, setChat] = useState<ChatMsg[]>([])
   const [reviewId, setReviewId] = useState<string | null>(null)
