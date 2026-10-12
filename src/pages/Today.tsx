@@ -44,12 +44,15 @@ export function TodayPage() {
   const microCount = company.length + moves.length
   const count = macro.length + microCount
   const need = major(fresh).length
-  const live = SIGNALS.filter((x) => x.kind !== 'planned' && !rules.off.includes(x.id)).length
+  // 捕捉：宏观和微观各盯着几类信号，今天各捕捉到多少个原始异常信号（一只股票一天触发几个指标就算几个）
+  const liveOf = (scope: '宏观' | '微观') => SIGNALS.filter((x) => x.kind !== 'planned' && !rules.off.includes(x.id) && scopeOf(x.id) === scope).length
+  const rawMicro = company.length + moves.reduce((n, a) => n + (a.indicators?.length ?? 1), 0)
+  const raw = macro.length + rawMicro
   // 每只股票今天最高的异动等级，用来在图上打点
   const dotOf = (code: string): Level | null => fresh.filter((a) => a.hits.includes(code)).map((a) => gradeOf(a, code)).sort((x, y) => y.score - x.score)[0]?.level ?? null
 
   const headline = count
-    ? `早上好。今天触发了 ${count} 条异动，我筛出 ${need} 条需要你看，按宏观、微观排在左边了。`
+    ? `早上好。今天从宏观政策和微观指标里捕捉到 ${raw} 个异常信号，合并、分级后有 ${need} 件事需要你看，排在左边了。`
     : '早上好。今天自选股上很平静，没有新的事需要你看。'
   const rail = wide ? <AskPanel tips={tips} headline={headline} /> : null
 
@@ -60,7 +63,7 @@ export function TodayPage() {
           <p className="text-[13px] text-steel">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
           <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{need ? `今天有 ${need} 件事需要你看` : count ? '今天没有需要你特别留意的事' : '今天没有新的事需要你看'}</h1>
 
-          <Funnel stocks={STOCKS.length} signals={live} triggered={count} need={need} />
+          <Capture stocks={STOCKS.length} macro={{ kinds: liveOf('宏观'), raw: macro.length }} micro={{ kinds: liveOf('微观'), raw: rawMicro }} items={count} need={need} />
           <Overview dotOf={dotOf} />
 
           <Section title="提前看" sub="管家认为未来几天有下跌风险的自选股" count={outlook.length}>
@@ -118,32 +121,37 @@ export function TodayPage() {
 }
 
 /**
- * 降噪条：行情和资讯很杂，管家替你筛。从左到右是「盯着多少 → 今天触发多少 → 需要你看多少」，
- * 下面一条比例条显示触发的里面有多少被收起（影响轻微）。数字都是按当前规则算出来的。
+ * 捕捉与信噪比：左边是管家从两个来源捕捉到的异常信号——宏观政策、微观指标，各盯几类、今天捕捉到几个，
+ * 一个圆点代表一个原始信号；右边是合并、分级之后需要你看的几件事。数字都是按当前规则算出来的。
  */
-function Funnel({ stocks, signals, triggered, need }: { stocks: number; signals: number; triggered: number; need: number }) {
-  const Step = ({ label, value, unit, strong }: { label: string; value: number; unit: string; strong?: boolean }) => (
-    <div className="min-w-0">
-      <p className="truncate text-xs text-steel">{label}</p>
-      <p className={cn('mt-0.5 leading-none', strong ? 'text-ink' : 'text-slate')}><b className="text-[22px] font-semibold tracking-tight">{value}</b><span className="ml-1 text-xs">{unit}</span></p>
+function Capture({ stocks, macro, micro, items, need }: { stocks: number; macro: { kinds: number; raw: number }; micro: { kinds: number; raw: number }; items: number; need: number }) {
+  const raw = macro.raw + micro.raw
+  const Source = ({ name, scope, n }: { name: string; scope: string; n: number }) => (
+    <div className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-x-3 py-1">
+      <span className="text-[13px] font-medium text-ink">{name}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-xs text-steel">{scope}</span>
+        <span className="flex min-w-0 flex-wrap gap-1" aria-hidden="true">{Array.from({ length: Math.min(n, 24) }, (_, i) => <span key={i} className="h-2 w-2 rounded-full bg-ink" />)}</span>
+      </span>
+      <span className="text-[13px] tabular-nums text-ink"><b className="font-semibold">{n}</b> 个</span>
     </div>
   )
-  const Arrow = () => <ChevronRight className="h-4 w-4 shrink-0 text-stone" aria-hidden="true" />
   return (
-    <section className="mt-3 rounded-lg bg-surface px-3.5 py-3" aria-label={`管家盯着 ${stocks} 只自选、${signals} 类信号，今天触发 ${triggered} 条，其中 ${need} 条需要你看`}>
-      <div className="flex items-center gap-3 sm:gap-5">
-        <Step label={`盯着 ${stocks} 只自选`} value={signals} unit="类信号" />
-        <Arrow />
-        <Step label="今天触发" value={triggered} unit="条" />
-        <Arrow />
-        <Step label="需要你看" value={need} unit="条" strong />
-        <p className="ml-auto hidden max-w-[220px] text-right text-xs leading-snug text-steel md:block">行情和资讯很杂，管家先筛一遍。{triggered - need > 0 ? `${triggered - need} 条影响轻微，已收起。` : ''}</p>
+    <section className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-2 rounded-lg bg-surface px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+      aria-label={`今天捕捉到 ${raw} 个异常信号：宏观政策 ${macro.raw} 个，微观指标 ${micro.raw} 个；合并、分级后 ${need} 件需要你看`}>
+      <div className="min-w-0">
+        <p className="mb-0.5 text-xs text-steel">今天捕捉到的异常信号</p>
+        <Source name="宏观政策" scope={`盯 ${macro.kinds} 类`} n={macro.raw} />
+        <Source name="微观指标" scope={`盯 ${micro.kinds} 类 × ${stocks} 只`} n={micro.raw} />
       </div>
-      {triggered ? (
-        <div className="mt-2.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-          <span className="bg-ink" style={{ width: `${(need / triggered) * 100}%` }} /><span className="flex-1 bg-hairline-strong" />
+      <div className="flex items-center gap-3 border-t border-hairline pt-2 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+        <ChevronRight className="hidden h-4 w-4 shrink-0 text-stone sm:block" aria-hidden="true" />
+        <div>
+          <p className="text-xs text-steel">合并、分级后</p>
+          <p className="mt-0.5 leading-none"><b className="text-[26px] font-semibold tracking-tight">{need}</b><span className="ml-1 text-[13px]">件需要你看</span></p>
+          <p className="mt-1 text-xs text-steel">{raw} 个信号 → {items} 件事{items - need > 0 ? `，${items - need} 件轻微已收起` : ''}</p>
         </div>
-      ) : null}
+      </div>
     </section>
   )
 }
