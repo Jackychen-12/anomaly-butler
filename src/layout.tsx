@@ -43,7 +43,7 @@ export function Scroll({ children, className }: { children: ReactNode; className
  */
 export function WithRail({ children, rail, railFirst, hideRailBelowXl, railClassName }: { children: ReactNode; rail: ReactNode; railFirst?: boolean; hideRailBelowXl?: boolean; railClassName?: string }) {
   return (
-    <div className="flex h-full flex-col overflow-y-auto xl:grid xl:grid-cols-[minmax(0,1fr)_372px] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden">
+    <div className="flex h-full flex-col overflow-y-auto xl:grid xl:grid-cols-[minmax(0,1fr)_396px] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden">
       <div className={cn('shrink-0 xl:min-h-0 xl:overflow-y-auto', railFirst && 'order-2 xl:order-none')}>{children}<Disclaimer /></div>
       <aside className={cn('shrink-0 border-hairline bg-surface-soft xl:min-h-0 xl:border-l', hideRailBelowXl ? 'hidden xl:block' : railFirst ? 'border-b xl:border-b-0' : 'border-t xl:border-t-0', railClassName ?? 'xl:overflow-y-auto')}>{rail}</aside>
     </div>

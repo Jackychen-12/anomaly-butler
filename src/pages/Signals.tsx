@@ -18,12 +18,12 @@ const KIND: Record<SignalDef['kind'], { label: string; tone: 'green' | 'blue' | 
 }
 
 export function SignalsPage() {
-  const { tick, lessons, rules } = useStore()
+  const { tick, lessons, rules, agent } = useStore()
   const desktop = useIsDesktop()
   const [sel, setSel] = useState<string | null>(null)
   // 评测跟着规则重算
   const evals = useMemo(() => Object.fromEntries(SIGNALS.map((s) => [s.id, evaluateSignal(s.id, tick, rules)])) as Record<string, SignalEval>, [tick, rules])
-  const tips = useMemo(() => suggestions(tick), [tick, rules]) // eslint-disable-line react-hooks/exhaustive-deps
+  const tips = useMemo(() => (agent.tune ? suggestions(tick) : []), [tick, rules, agent.tune]) // eslint-disable-line react-hooks/exhaustive-deps
   const live = SIGNALS.filter((s) => s.kind !== 'planned').length
   const current = SIGNALS.find((s) => s.id === sel) ?? (desktop ? SIGNALS[0] : undefined)
   const download = () => {
@@ -136,8 +136,8 @@ function Logic({ s }: { s: SignalDef }) {
 
 /** 管家的建议：它试了别的阈值，发现历史上更准的，提出来由用户决定 */
 function Advice({ s }: { s: SignalDef }) {
-  const { tick, rules, setRules } = useStore()
-  const t = suggestions(tick).find((x) => x.signal === s.id)
+  const { tick, rules, setRules, agent } = useStore()
+  const t = agent.tune ? suggestions(tick).find((x) => x.signal === s.id) : undefined
   if (!t) return null
   const pctOf = (r: number) => `${Math.round(r * 100)}%`
   return (

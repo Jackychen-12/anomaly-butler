@@ -3,13 +3,13 @@
  * 宏观是政策和跨市场的事，画出传导路径；微观是公司自己的事和行情指标。右边是提问栏，窄屏时收进底部输入条。
  */
 import { useState, type ReactNode } from 'react'
-import { MessageCircle } from 'lucide-react'
+import { ChevronRight, MessageCircle } from 'lucide-react'
 import { AskPanel, useGo } from '../ask'
 import { DivergingBars, JudgmentMeter, type BarRow } from '../charts'
 import { STOCKS } from '../data/case'
 import { anomaliesAt, changeOver, fmtDate, isFresh, judgmentsAt, recentlySettled, sectorRows, signed, stockOf, weekday, whyLine, type Anomaly, type Judgment, type Level } from '../engine'
 import { Button, cn, LevelTag, Stamp, Tag } from '../kit'
-import { scopeOf } from '../data/signals'
+import { scopeOf, SIGNALS } from '../data/signals'
 import { PathTree, StockChip } from '../path'
 import { Sheet, useIsWide, WithRail } from '../layout'
 import { VoteButtons } from '../parts'
@@ -19,7 +19,7 @@ import { useStore } from '../store'
 
 export function TodayPage() {
   const st = useStore()
-  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile } = st
+  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent, rules } = st
   const go = useGo()
   const wide = useIsWide()
   const [sheet, setSheet] = useState(false)
@@ -31,33 +31,43 @@ export function TodayPage() {
   const company = events.filter((a) => scopeOf(a.signal) === '微观')
   const js = judgmentsAt(tick)
   const recent = recentlySettled(tick)
-  const waiting = js.filter((j) => j.status === 'pending' && j.issued !== tick)
-  const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile }).slice(0, 2)
+  // 提前看：管家认为未来几天有下跌风险的自选股（还没到对答案那天的判断），今天新发出的排前面
+  const outlook = js.filter((j) => j.status === 'pending').sort((a, b) => (a.issued === b.issued ? (a.n - a.elapsed) - (b.n - b.elapsed) : a.issued < b.issued ? 1 : -1))
+  // 管家主动想说的事：宽屏放进右侧对话栏的开场白里，窄屏放在主内容顶部
+  const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent }).slice(0, wide ? 3 : 2)
   // 一件事的等级取它影响到的自选里最高的那个
   const levelOf = (a: Anomaly) => a.hits.map((h) => gradeOf(a, h)).sort((x, y) => y.score - x.score)[0]
   const byLevel = (list: Anomaly[]) => [...list].sort((a, b) => levelOf(b).score - levelOf(a).score)
+  // 降噪：影响轻微（低）的收起来，只把高和中摆出来
+  const major = (list: Anomaly[]) => byLevel(list).filter((a) => levelOf(a).level !== '低')
+  const minor = (list: Anomaly[]) => byLevel(list).filter((a) => levelOf(a).level === '低')
   const microCount = company.length + moves.length
   const count = macro.length + microCount
+  const need = major(fresh).length
+  const live = SIGNALS.filter((x) => x.kind !== 'planned' && !rules.off.includes(x.id)).length
   // 每只股票今天最高的异动等级，用来在图上打点
   const dotOf = (code: string): Level | null => fresh.filter((a) => a.hits.includes(code)).map((a) => gradeOf(a, code)).sort((x, y) => y.score - x.score)[0]?.level ?? null
 
-  const rail = wide ? (
-    <div className="flex h-full min-h-0 flex-col">
-      <h2 className="shrink-0 border-b border-hairline px-4 py-3 text-sm font-semibold">问管家</h2>
-      <div className="min-h-0 flex-1"><AskPanel /></div>
-    </div>
-  ) : null
+  const headline = count
+    ? `早上好。今天触发了 ${count} 条异动，我筛出 ${need} 条需要你看，按宏观、微观排在左边了。`
+    : '早上好。今天自选股上很平静，没有新的事需要你看。'
+  const rail = wide ? <AskPanel tips={tips} headline={headline} /> : null
 
   return (
     <>
       <WithRail hideRailBelowXl rail={rail} railClassName="xl:overflow-hidden">
         <div className="mx-auto max-w-[840px] px-4 py-5 lg:px-8 lg:py-7">
           <p className="text-[13px] text-steel">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
-          <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{count ? `今天有 ${count} 件事和你的自选有关` : '今天没有新的事需要你看'}</h1>
+          <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{need ? `今天有 ${need} 件事需要你看` : count ? '今天没有需要你特别留意的事' : '今天没有新的事需要你看'}</h1>
 
+          <Funnel stocks={STOCKS.length} signals={live} triggered={count} need={need} />
           <Overview dotOf={dotOf} />
 
-          {tips.length ? (
+          <Section title="提前看" sub="管家认为未来几天有下跌风险的自选股" count={outlook.length}>
+            {outlook.length ? <Rows list={outlook} /> : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">目前没有。管家发现风险时会先在这里列出来。</p>}
+          </Section>
+
+          {tips.length && !wide ? (
             <ul className="mt-4 overflow-hidden rounded-lg bg-tint-lavender text-on-lavender" aria-label="管家想提醒你">
               {tips.map((t) => (
                 <li key={t.id} className="flex items-center gap-3 border-b border-white/50 px-3.5 py-2 text-[13px] last:border-b-0">
@@ -69,19 +79,26 @@ export function TodayPage() {
           ) : null}
 
           <Section title="宏观" sub="政策与跨市场的事，以及它怎么传到你的自选" count={macro.length}>
-            {macro.length ? <div className="flex flex-col gap-3">{byLevel(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}</div>
-              : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的宏观事件。</p>}
+            {macro.length ? (
+              <div className="flex flex-col gap-3">
+                {major(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
+                <Minor n={minor(macro).length}>{minor(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}</Minor>
+              </div>
+            ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的宏观事件。</p>}
           </Section>
           <Section title="微观" sub="公司自己的事，和行情指标的异动" count={microCount}>
             {microCount ? (
               <div className="flex flex-col gap-3">
-                {byLevel(company).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
-                {moves.length ? <MovesCard moves={byLevel(moves)} judgments={js} levelOf={(a) => levelOf(a).level} /> : null}
+                {major(company).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
+                {major(moves).length ? <MovesCard moves={major(moves)} judgments={js} levelOf={(a) => levelOf(a).level} /> : null}
+                <Minor n={minor(company).length + minor(moves).length}>
+                  {minor(company).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
+                  {minor(moves).length ? <MovesCard moves={minor(moves)} judgments={js} levelOf={(a) => levelOf(a).level} /> : null}
+                </Minor>
               </div>
             ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的公司事件或指标异动。</p>}
           </Section>
 
-          {waiting.length ? <Section title="在等结果"><Rows list={waiting} /></Section> : null}
           {recent.length ? (
             <Section title="最近有结果" action={<Button size="xs" variant="ghost" onClick={() => st.setPage('review')}>全部 →</Button>}><Rows list={recent.slice(0, 5)} /></Section>
           ) : null}
@@ -95,8 +112,50 @@ export function TodayPage() {
           </div>
         )}
       </WithRail>
-      {sheet && !wide ? <Sheet title="问管家" tall onClose={() => setSheet(false)}><AskPanel autoFocus onNavigate={() => setSheet(false)} /></Sheet> : null}
+      {sheet && !wide ? <Sheet title="问管家" tall onClose={() => setSheet(false)}><AskPanel bare autoFocus onNavigate={() => setSheet(false)} /></Sheet> : null}
     </>
+  )
+}
+
+/**
+ * 降噪条：行情和资讯很杂，管家替你筛。从左到右是「盯着多少 → 今天触发多少 → 需要你看多少」，
+ * 下面一条比例条显示触发的里面有多少被收起（影响轻微）。数字都是按当前规则算出来的。
+ */
+function Funnel({ stocks, signals, triggered, need }: { stocks: number; signals: number; triggered: number; need: number }) {
+  const Step = ({ label, value, unit, strong }: { label: string; value: number; unit: string; strong?: boolean }) => (
+    <div className="min-w-0">
+      <p className="truncate text-xs text-steel">{label}</p>
+      <p className={cn('mt-0.5 leading-none', strong ? 'text-ink' : 'text-slate')}><b className="text-[22px] font-semibold tracking-tight">{value}</b><span className="ml-1 text-xs">{unit}</span></p>
+    </div>
+  )
+  const Arrow = () => <ChevronRight className="h-4 w-4 shrink-0 text-stone" aria-hidden="true" />
+  return (
+    <section className="mt-3 rounded-lg bg-surface px-3.5 py-3" aria-label={`管家盯着 ${stocks} 只自选、${signals} 类信号，今天触发 ${triggered} 条，其中 ${need} 条需要你看`}>
+      <div className="flex items-center gap-3 sm:gap-5">
+        <Step label={`盯着 ${stocks} 只自选`} value={signals} unit="类信号" />
+        <Arrow />
+        <Step label="今天触发" value={triggered} unit="条" />
+        <Arrow />
+        <Step label="需要你看" value={need} unit="条" strong />
+        <p className="ml-auto hidden max-w-[220px] text-right text-xs leading-snug text-steel md:block">行情和资讯很杂，管家先筛一遍。{triggered - need > 0 ? `${triggered - need} 条影响轻微，已收起。` : ''}</p>
+      </div>
+      {triggered ? (
+        <div className="mt-2.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+          <span className="bg-ink" style={{ width: `${(need / triggered) * 100}%` }} /><span className="flex-1 bg-hairline-strong" />
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+/** 影响轻微的收在这里，点开才看 */
+function Minor({ n, children }: { n: number; children: ReactNode }) {
+  if (!n) return null
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1 py-1 text-[13px] text-steel hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />另有 {n} 条影响轻微，已收起</summary>
+      <div className="mt-2 flex flex-col gap-3">{children}</div>
+    </details>
   )
 }
 
