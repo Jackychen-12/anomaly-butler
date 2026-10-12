@@ -44,6 +44,12 @@ export function Planner({ j }: { j: Judgment }) {
       </div>
       <div className="grid gap-5 px-4 py-4 @min-[600px]:grid-cols-[minmax(0,1fr)_280px]">
         <div>
+          {profile.rules.length ? (
+            <div className="mb-3 rounded-md bg-surface px-3 py-2 text-[13px] text-charcoal">
+              <p className="text-xs text-steel">动手前对照一下你的原则</p>
+              <ul className="mt-1 list-disc pl-4">{profile.rules.map((r) => <li key={r}>{r}</li>)}</ul>
+            </div>
+          ) : null}
           <p className="eyebrow mb-2">三种做法</p>
           <div className="flex flex-col gap-2">
             {list.map((p) => (

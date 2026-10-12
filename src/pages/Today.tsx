@@ -277,7 +277,9 @@ function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level;
 
 /** 行情指标的异动：一行一只股票，列出触发了哪些指标，附一句原因 */
 function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments: Judgment[]; levelOf: (a: Anomaly) => Level }) {
-  const { tick, openReview } = useStore()
+  const { tick, openReview, profile } = useStore()
+  // 画像里选了「新手」：每只股票最主要的那个指标多给一句名词解释
+  const novice = profile.experience === 'new'
   return (
     <article className="rounded-lg border border-hairline">
       <h3 className="px-3.5 pb-2 pt-3 text-[17px] font-semibold leading-snug tracking-tight">{moves.length} 只自选股的行情指标有异动</h3>
@@ -291,6 +293,7 @@ function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments:
                 {a.indicators?.map((h) => <Tag key={h.id}>{h.label}</Tag>)}
               </div>
               <p className="mt-1.5 text-[13px] text-slate">{whyLine(a, tick)}</p>
+              {novice ? <p className="mt-1 text-xs text-steel">{signalOf(a.signal)?.name}：{signalOf(a.signal)?.define}</p> : null}
               {j ? (
                 <div className="mt-2.5 grid gap-x-5 gap-y-2.5 sm:grid-cols-[minmax(0,1fr)_220px]">
                   <div className="min-w-0">
