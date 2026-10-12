@@ -1,19 +1,20 @@
 /**
- * 今日：先用图看全局（自选变化、板块变化），再看今天的事。每件事只留标题、受影响的股票和管家的判断，细节点开再看。
- * 右边是提问栏，窄屏时收进底部输入条。
+ * 今日：先用图看全局（自选变化、板块变化），再分「宏观」和「微观」看今天的事。
+ * 宏观是政策和跨市场的事，画出传导路径；微观是公司自己的事和行情指标。右边是提问栏，窄屏时收进底部输入条。
  */
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, MessageCircle } from 'lucide-react'
+import { MessageCircle } from 'lucide-react'
 import { AskPanel, useGo } from '../ask'
 import { DivergingBars, JudgmentMeter, type BarRow } from '../charts'
 import { STOCKS } from '../data/case'
 import { anomaliesAt, changeOver, fmtDate, isFresh, judgmentsAt, recentlySettled, sectorRows, signed, stockOf, weekday, whyLine, type Anomaly, type Judgment, type Level } from '../engine'
 import { Button, cn, LevelTag, Stamp, Tag } from '../kit'
+import { scopeOf } from '../data/signals'
+import { PathTree, StockChip } from '../path'
 import { Sheet, useIsWide, WithRail } from '../layout'
 import { VoteButtons } from '../parts'
 import { meaning } from '../profile'
 import { nudges } from '../proactive'
-import { priorLessons } from '../review'
 import { useStore } from '../store'
 
 export function TodayPage() {
@@ -26,14 +27,17 @@ export function TodayPage() {
   const fresh = anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick))
   const events = fresh.filter((a) => !a.auto)
   const moves = fresh.filter((a) => a.auto)
+  const macro = events.filter((a) => scopeOf(a.signal) === '宏观')
+  const company = events.filter((a) => scopeOf(a.signal) === '微观')
   const js = judgmentsAt(tick)
   const recent = recentlySettled(tick)
   const waiting = js.filter((j) => j.status === 'pending' && j.issued !== tick)
   const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile }).slice(0, 2)
   // 一件事的等级取它影响到的自选里最高的那个
   const levelOf = (a: Anomaly) => a.hits.map((h) => gradeOf(a, h)).sort((x, y) => y.score - x.score)[0]
-  const sorted = [...events].sort((a, b) => levelOf(b).score - levelOf(a).score)
-  const count = events.length + (moves.length ? 1 : 0)
+  const byLevel = (list: Anomaly[]) => [...list].sort((a, b) => levelOf(b).score - levelOf(a).score)
+  const microCount = company.length + moves.length
+  const count = macro.length + microCount
   // 每只股票今天最高的异动等级，用来在图上打点
   const dotOf = (code: string): Level | null => fresh.filter((a) => a.hits.includes(code)).map((a) => gradeOf(a, code)).sort((x, y) => y.score - x.score)[0]?.level ?? null
 
@@ -64,10 +68,18 @@ export function TodayPage() {
             </ul>
           ) : null}
 
-          <div className="mt-4 flex flex-col gap-3">
-            {sorted.map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
-            {moves.length ? <MovesCard moves={moves} judgments={js} /> : null}
-          </div>
+          <Section title="宏观" sub="政策与跨市场的事，以及它怎么传到你的自选" count={macro.length}>
+            {macro.length ? <div className="flex flex-col gap-3">{byLevel(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}</div>
+              : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的宏观事件。</p>}
+          </Section>
+          <Section title="微观" sub="公司自己的事，和行情指标的异动" count={microCount}>
+            {microCount ? (
+              <div className="flex flex-col gap-3">
+                {byLevel(company).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
+                {moves.length ? <MovesCard moves={byLevel(moves)} judgments={js} levelOf={(a) => levelOf(a).level} /> : null}
+              </div>
+            ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的公司事件或指标异动。</p>}
+          </Section>
 
           {waiting.length ? <Section title="在等结果"><Rows list={waiting} /></Section> : null}
           {recent.length ? (
@@ -139,10 +151,13 @@ function Overview({ dotOf }: { dotOf: (code: string) => Level | null }) {
   )
 }
 
-function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+function Section({ title, sub, count, action, children }: { title: string; sub?: string; count?: number; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="mt-6">
-      <div className="mb-2 flex items-center justify-between gap-3"><h2 className="text-base font-semibold">{title}</h2>{action}</div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-base font-semibold">{title}{count != null ? <span className="text-[13px] font-normal tabular-nums text-steel">{count} 条</span> : null}{sub ? <span className="hidden text-[13px] font-normal text-steel sm:inline">{sub}</span> : null}</h2>
+        {action}
+      </div>
       {children}
     </section>
   )
@@ -171,32 +186,16 @@ function Rows({ list }: { list: Judgment[] }) {
   )
 }
 
-/** 受影响的股票：名称 + 上一个交易日涨跌。箭头带颜色，文字不带 */
-function Chip({ code }: { code: string }) {
-  const { tick, holdings, openStock } = useStore()
-  const v = changeOver(code, tick, 1)
-  return (
-    <button type="button" onClick={() => openStock(code)} className="inline-flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-[13px] hover:bg-surface-soft" title={`${stockOf(code).name} 上一个交易日 ${signed(v)}%`}>
-      <span className="font-medium">{stockOf(code).name.replace('-W', '')}</span>
-      <span aria-hidden="true" className={cn('text-[10px]', v > 0 ? 'text-up' : v < 0 ? 'text-down' : 'text-stone')}>{v > 0 ? '▲' : v < 0 ? '▼' : '■'}</span>
-      <span className="tabular-nums text-slate">{signed(v)}%</span>
-      {holdings[code] ? <span className="text-xs text-stone">仓位 {Math.round(holdings[code] * 100)}%</span> : null}
-    </button>
-  )
-}
-
-/** 一件事一张卡：标题、受影响的股票、管家的判断和进度。发生了什么、为什么相关等文字收在「详情」里 */
+/** 一件事一张卡：标题、传导路径图（事件 → 途径 → 你的自选股）、管家的判断和进度。其余文字放进判断页的五步里 */
 function EventCard({ a, level, judgments }: { a: Anomaly; level: Level; judgments: Judgment[] }) {
-  const { holdings, hasHoldings, openMe, openStock, openReview, lessons, profile } = useStore()
-  const [open, setOpen] = useState(false)
+  const { openStock, openReview, profile } = useStore()
   const relief = a.tone === 'relief'
-  const held = a.hits.filter((h) => (holdings[h] ?? 0) > 0)
   return (
     <article className="rounded-lg border border-hairline">
       <div className="px-3.5 pb-3 pt-3">
         <div className="flex flex-wrap items-center gap-1.5"><LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}<span className="text-xs text-steel">{a.when}</span></div>
-        <h2 className="mt-1.5 text-[17px] font-semibold leading-snug tracking-tight">{a.title}</h2>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className="mr-0.5 text-xs text-steel">影响</span>{a.hits.map((h) => <Chip key={h} code={h} />)}</div>
+        <h3 className="mb-2.5 mt-1.5 text-[17px] font-semibold leading-snug tracking-tight">{a.title}</h3>
+        <PathTree a={a} judged={judgments.map((j) => j.code)} />
       </div>
       {judgments.map((j) => {
         const mean = meaning(profile, j)
@@ -205,57 +204,47 @@ function EventCard({ a, level, judgments }: { a: Anomaly; level: Level; judgment
             <div className="min-w-0">
               <p className="text-[15px] leading-snug"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>
               {mean ? <p className="mt-1 text-[13px] text-on-lavender">{mean}</p> : null}
-              {j.status === 'pending' ? <div className="mt-2.5"><VoteButtons j={j} /></div> : null}
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+                {j.status === 'pending' ? <VoteButtons j={j} /> : null}
+                <button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">按五步想清楚 →</button>
+              </div>
             </div>
             <JudgmentMeter j={j} />
           </div>
         )
       })}
-      {judgments.length ? null : <p className="border-t border-hairline-soft px-3.5 py-2.5 text-[13px] text-steel">{relief ? '好消息，只提醒、不做判断。' : '影响还不明确，先记下、不做判断。'}</p>}
-      <div className="border-t border-hairline-soft">
-        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-1 px-3.5 py-2 text-[13px] text-slate hover:bg-surface-soft">
-          <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />{open ? '收起' : '发生了什么、为什么和我有关'}
-        </button>
-        {open ? (
-          <div className="px-3.5 pb-3.5 text-sm leading-relaxed text-charcoal">
-            <ol>
-              {a.chain.map((c, i) => <li key={i} className="flex gap-2 py-0.5" style={{ paddingLeft: i * 14 }}><span aria-hidden="true" className="text-stone">▸</span><span><span className="mr-2 text-steel">{c.label}</span>{c.text}</span></li>)}
-            </ol>
-            {judgments.map((j) => {
-              const prior = priorLessons(j, lessons)
-              return (
-                <p key={j.id} className="mt-2 text-[13px] text-steel">
-                  {stockOf(j.code).name}这条：如果{j.invalid}，判断作废。{prior.length ? `参考了以往记下的 ${prior.length} 条经验：${prior[0].text}` : ''}
-                  {j.status === 'pending' ? <button type="button" onClick={() => openReview(j.id)} className="ml-1 text-link hover:underline">和管家聊聊 →</button> : null}
-                </p>
-              )
-            })}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="xs" onClick={() => openStock(a.hits[0])}>看证据和走势</Button>
-              {relief ? null : held.length ? <Button size="xs" onClick={() => openMe('holdings')}>看调仓方案</Button> : hasHoldings ? null : <Button size="xs" onClick={() => openMe('holdings')}>补充持仓</Button>}
-            </div>
-          </div>
-        ) : null}
-      </div>
+      {judgments.length ? null : (
+        <p className="flex flex-wrap items-center gap-x-3 border-t border-hairline-soft px-3.5 py-2.5 text-[13px] text-steel">
+          <span>{relief ? '好消息，只提醒、不做判断。' : '影响还不明确，先记下、不做判断。'}</span>
+          <button type="button" onClick={() => openStock(a.hits[0])} className="text-link hover:underline">看证据 →</button>
+        </p>
+      )}
     </article>
   )
 }
 
-/** 上一个交易日波动很大的自选股，合成一张卡，一行一只，附一句原因 */
-function MovesCard({ moves, judgments }: { moves: Anomaly[]; judgments: Judgment[] }) {
-  const { tick } = useStore()
+/** 行情指标的异动：一行一只股票，列出触发了哪些指标，附一句原因 */
+function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments: Judgment[]; levelOf: (a: Anomaly) => Level }) {
+  const { tick, openReview } = useStore()
   return (
     <article className="rounded-lg border border-hairline">
-      <h2 className="px-3.5 pb-2 pt-3 text-[17px] font-semibold leading-snug tracking-tight">{moves.length} 只自选股波动很大</h2>
+      <h3 className="px-3.5 pb-2 pt-3 text-[17px] font-semibold leading-snug tracking-tight">{moves.length} 只自选股的行情指标有异动</h3>
       <ul>
         {moves.map((a) => {
           const j = judgments.find((x) => x.anomaly.id === a.id)
           return (
             <li key={a.id} className="border-t border-hairline-soft px-3.5 py-2.5">
-              <div className="flex flex-wrap items-center gap-2"><Chip code={a.hits[0]} /><span className="min-w-0 flex-1 text-[13px] text-slate">{whyLine(a, tick)}</span></div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <LevelTag level={levelOf(a)} /><StockChip code={a.hits[0]} judged={!!j} />
+                {a.indicators?.map((h) => <Tag key={h.id}>{h.label}</Tag>)}
+              </div>
+              <p className="mt-1.5 text-[13px] text-slate">{whyLine(a, tick)}</p>
               {j ? (
                 <div className="mt-2.5 grid gap-x-5 gap-y-2.5 sm:grid-cols-[minmax(0,1fr)_220px]">
-                  <div className="min-w-0"><p className="text-sm"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>{j.status === 'pending' ? <div className="mt-2"><VoteButtons j={j} /></div> : null}</div>
+                  <div className="min-w-0">
+                    <p className="text-sm"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">{j.status === 'pending' ? <VoteButtons j={j} /> : null}<button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">按五步想清楚 →</button></div>
+                  </div>
                   <JudgmentMeter j={j} />
                 </div>
               ) : null}

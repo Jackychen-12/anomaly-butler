@@ -1,6 +1,7 @@
 /** 主动提示：管家根据记住的事（表态、偏好、持仓）和当天的数据，自己先开口。 */
 import { STOCKS, type Vote } from './data/case'
-import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, type Pref } from './engine'
+import { signalOf } from './data/signals'
+import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, suggestions, type Pref } from './engine'
 import { unreviewed } from './review'
 import type { Link } from './assistant'
 import { profileSet, type Profile } from './profile'
@@ -21,7 +22,7 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
 
   // 持仓股被说中了：事后应对（合成一条）
   const heldHit = recent.filter((j) => j.status === 'hit' && (holdings[j.code] ?? 0) > 0)
-  if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}已跌破管家说的价格。`, action: { label: '看做法', me: 'holdings' } })
+  if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}已跌破管家说的价格。`, action: { label: '看做法', review: heldHit[0].id } })
   // 我表过态的判断有结果了（合成一条，细节在下面的「有结果了」里）
   const mine = recent.map((j) => ({ j, r: myResult(j, votes[j.id]) })).filter((x) => x.r != null)
   if (mine.length === 1) {
@@ -37,6 +38,12 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
   // 设了「多提醒我」的股票今天有新异动
   for (const s of STOCKS) if (prefs[s.code] === 'focus' && fresh.some((a) => a.hits.includes(s.code)))
     out.push({ id: `focus-${s.code}`, text: `你让我多留意${s.name}，它今天有新的异动。`, action: { label: '去看看', code: s.code } })
+  // 仓位超过自己设的上限
+  const over = profile.maxWeight ? Object.entries(holdings).filter(([, w]) => w * 100 > profile.maxWeight!).map(([c]) => stockOf(c).name) : []
+  if (over.length) out.push({ id: 'over', text: `${over.join('、')}的仓位超过了你设的上限（${profile.maxWeight}%）。`, action: { label: '看持仓', me: 'holdings' } })
+  // 管家试出了更准的阈值
+  const tip = suggestions(tick)[0]
+  if (tip) out.push({ id: `tip-${tip.signal}`, text: `我试了「${signalOf(tip.signal)?.name}」的几个阈值，${tip.to} 比现在的 ${tip.from} 在历史上更准。`, action: { label: '看看要不要改', page: 'signals' } })
   // 还没设投资画像
   if (!profileSet(profile)) out.push({ id: 'profile', text: '告诉我你能接受多大的跌幅、一般拿多久，我按你的风格提醒。', action: { label: '设置画像', me: 'settings' } })
   // 还没填持仓，而今天有影响大的事

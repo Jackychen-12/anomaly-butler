@@ -1,8 +1,8 @@
-/** 自选页：左边是行情列表，异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
+/** 自选页：左边的行情列表按今天的重要程度分组（重要、留意、轻微、平静），异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { MARKET_LABEL, STOCKS, type Market, type Stock } from '../data/case'
-import { anomaliesOf, fmtDate, isFresh, judgmentsOf, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
+import { anomaliesOf, fmtDate, isFresh, judgmentsOf, type Level, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
 import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
 import { AnomalyBody, GradeBox, JudgmentCard, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
@@ -56,7 +56,15 @@ export function WatchPage() {
         <span>名称</span><span className="text-right">昨收</span><span className="text-right">涨跌</span>
       </div>
       <ul className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-        {shown.map((r) => <StockRow key={r.s.code} r={r} selected={current === r.s.code} onPick={() => setCode(r.s.code)} />)}
+        {GROUPS.map((g) => {
+          const list = shown.filter((r) => groupOf(r) === g.key)
+          return list.length ? (
+            <li key={g.key}>
+              <h2 className="flex items-center gap-2 bg-surface-soft px-4 py-1.5 text-xs font-medium text-slate">{g.dot ? <LevelDot level={g.dot} /> : null}{g.label}<span className="font-normal text-stone">{list.length} 只 · {g.hint}</span></h2>
+              <ul>{list.map((r) => <StockRow key={r.s.code} r={r} selected={current === r.s.code} onPick={() => setCode(r.s.code)} />)}</ul>
+            </li>
+          ) : null
+        })}
         {shown.length === 0 ? <li className="px-4 py-8 text-sm text-steel">今天没有新异动。</li> : null}
       </ul>
     </>
@@ -64,6 +72,13 @@ export function WatchPage() {
 
   return <Split list={list} showDetail={!!current} detail={current ? <Detail code={current} onBack={desktop ? undefined : () => setCode(null)} /> : null} />
 }
+
+/** 按今天最高的异动等级把自选股分成四组 */
+const GROUPS: { key: Level | 'calm'; label: string; hint: string; dot?: Level }[] = [
+  { key: '高', label: '重要', hint: '今天先看', dot: '高' }, { key: '中', label: '留意', hint: '有空看', dot: '中' },
+  { key: '低', label: '轻微', hint: '知道就行', dot: '低' }, { key: 'calm', label: '平静', hint: '今天没有新异动' },
+]
+const groupOf = (r: Row): Level | 'calm' => r.fresh[0]?.g.level ?? 'calm'
 
 function StockRow({ r, selected, onPick }: { r: Row; selected: boolean; onPick: () => void }) {
   const { tick } = useStore()
@@ -80,7 +95,7 @@ function StockRow({ r, selected, onPick }: { r: Row; selected: boolean; onPick: 
         <span className="text-right"><PctPill v={bar.p} /></span>
         {r.fresh.slice(0, 2).map(({ a, g }) => (
           <span key={a.id} className="col-span-3 mt-1.5 flex items-center gap-1.5 text-xs text-slate">
-            <LevelDot level={g.level} /><b className="font-semibold text-ink">{g.level}</b><span className="truncate">{a.title}</span>
+            <LevelDot level={g.level} /><b className="font-semibold text-ink">{g.level}</b><span className="truncate">{a.indicators ? a.indicators.map((h) => h.label).join(' · ') : a.title}</span>
           </span>
         ))}
         {r.pending.length ? (
@@ -141,15 +156,15 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
                 <button type="button" onClick={() => setOpenId(a.id)} aria-expanded={isOpen} className="flex w-full items-start gap-3 py-2.5 text-left">
                   <LevelTag level={g.level} />
                   <span className="min-w-0 flex-1">
-                    <span className={cn('block text-sm', isOpen ? 'font-semibold' : 'font-medium')}>{a.title}</span>
+                    <span className={cn('block text-sm', isOpen ? 'font-semibold' : 'font-medium')}>{a.indicators ? a.indicators.map((h) => h.label).join(' · ') : a.title}</span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-steel">
                       <span>{a.cat}</span><span>{a.when}</span>
-                      {a.tone === 'relief' ? <span>好消息</span> : null}
+                      {a.tone === 'relief' && !a.auto ? <span>好消息</span> : null}
                       {isFresh(a, tick, prevTick) ? <span className="font-medium text-on-rose">新</span> : null}
                     </span>
                   </span>
                 </button>
-                {isOpen ? <div className="mb-4 rounded-lg bg-surface-soft p-4"><AnomalyBody a={a} /></div> : null}
+                {isOpen ? <div className="mb-4 rounded-lg bg-surface-soft p-4"><AnomalyBody a={a} focus={code} /></div> : null}
               </li>
             )
           })}

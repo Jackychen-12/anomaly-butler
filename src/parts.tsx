@@ -4,6 +4,7 @@ import { evalLine, fmtDate, gradeReason, knownBars, myResult, PREF_LABEL, relate
 import type { Vote } from './data/case'
 import { signalOf } from './data/signals'
 import { Button, cn, LevelTag, Stamp, Tag } from './kit'
+import { PathTree } from './path'
 import { priorLessons } from './review'
 import { useStore, VOTE_LABEL } from './store'
 
@@ -79,7 +80,7 @@ export function GradeBox({ a, code }: { a: Anomaly; code: string }) {
 }
 
 /** 异动正文：事情是怎么影响到这只股票的（缩进大纲）与证据。结论和证据分开放，方便只看证据自己判断。 */
-export function AnomalyBody({ a }: { a: Anomaly }) {
+export function AnomalyBody({ a, focus }: { a: Anomaly; focus?: string }) {
   const { tick } = useStore()
   const related = relatedEvents(a, tick)
   return (
@@ -92,15 +93,12 @@ export function AnomalyBody({ a }: { a: Anomaly }) {
             {related.length ? <p className="mt-1.5 text-[13px] text-steel">由事件引起的波动，往往不会一天结束。</p> : null}
             <p className="eyebrow mb-1.5 mt-3">数据</p>
           </>
-        ) : <p className="eyebrow mb-1.5">这件事怎么影响到它</p>}
-        <ol className="text-sm text-charcoal">
-          {a.chain.map((c, i) => (
-            <li key={i} className="flex gap-2 py-1" style={{ paddingLeft: i * 16 }}>
-              <span aria-hidden="true" className="text-stone">▸</span>
-              <span><span className="mr-2 text-steel">{c.label}</span>{c.text}</span>
-            </li>
-          ))}
-        </ol>
+        ) : <p className="eyebrow mb-1.5">怎么传到你的股票</p>}
+        {a.auto ? (
+          <ol className="text-sm text-charcoal">
+            {a.chain.map((c, i) => <li key={i} className="flex gap-2 py-1"><span aria-hidden="true" className="text-stone">▸</span><span><span className="mr-2 text-steel">{c.label}</span>{c.text}</span></li>)}
+          </ol>
+        ) : <PathTree a={a} focus={focus} judged={a.judgments.map((d) => d.code)} />}
       </div>
       <div>
         <p className="eyebrow mb-1.5">证据</p>
