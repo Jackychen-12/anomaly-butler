@@ -35,7 +35,6 @@ export function ReviewPage() {
     <>
       <div className="border-b border-hairline px-4 pb-3 pt-4">
         <h1 className="text-lg font-semibold tracking-tight">复盘</h1>
-        <p className="mt-0.5 text-[13px] text-steel">每条判断到期按真实收盘价对答案。说对说错都和管家聊一遍，把经验记下来。</p>
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
           <dt className="text-steel">管家</dt><dd className="tabular-nums"><b className="font-semibold">{sc.butler.hit}</b> 说对 · <b className="font-semibold">{sc.butler.miss}</b> 说错 · {sc.butler.void} 作废</dd>
           <dt className="text-steel">我</dt><dd className="tabular-nums"><b className="font-semibold">{sc.me.right}</b> 看对 · <b className="font-semibold">{sc.me.wrong}</b> 看错{sc.split.butler + sc.split.me ? ` · 意见不同时 管家 ${sc.split.butler}：我 ${sc.split.me}` : ''}</dd>

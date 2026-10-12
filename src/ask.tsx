@@ -70,7 +70,7 @@ export function AskPanel({ onNavigate, autoFocus }: { onNavigate?: () => void; a
             className="h-9 min-w-0 flex-1 rounded-md border border-hairline-strong bg-canvas px-3 text-sm outline-none placeholder:text-stone focus:border-primary focus:ring-1 focus:ring-primary" />
           <button type="submit" disabled={busy || !input.trim()} aria-label="发送" className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-white hover:bg-primary-pressed disabled:opacity-40')}><ArrowUp className="h-4 w-4" /></button>
         </form>
-        <p className="mt-1.5 text-[11px] text-stone">{llm.on ? '已接入你配置的模型。' : '由内置规则回答，能答的问题有限。'}只基于这一刻之前的信息。</p>
+        <p className="mt-1.5 text-[11px] text-stone">目前由内置规则回答，能答的问题有限。</p>
       </div>
     </div>
   )

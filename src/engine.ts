@@ -1,6 +1,6 @@
 /** 异动识别、分级与判断结算。所有函数都只使用「当前时间刻度之前」的数据。 */
 import raw from './data/prices.json'
-import { AUTO_JUDGMENTS, EVENTS, REVIEWS, STOCKS, type Category, type EventDef, type JudgmentDef, type Review, type Stock, type Vote } from './data/case'
+import { AUTO_JUDGMENTS, EVENTS, REVIEWS, SECTORS, STOCKS, type Category, type EventDef, type JudgmentDef, type Review, type Stock, type Vote } from './data/case'
 import { SIGNAL_GROUPS, SIGNALS, signalOf, type SignalDef } from './data/signals'
 
 export type Bar = { d: string; o: number; c: number; h: number; l: number; v: number; p: number }
@@ -19,6 +19,22 @@ const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周�
 export const weekday = (d: string) => WEEK[new Date(d + 'T00:00:00Z').getUTCDay()]
 export const signClass = (v: number) => (v > 0 ? 'text-up' : v < 0 ? 'text-down' : 'text-ink')
 function nextDay(d: string) { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10) }
+
+/** 最近 n 个交易日的累计涨跌幅（%） */
+export function changeOver(code: string, tick: string, n: number): number {
+  const k = knownBars(code, tick)
+  const last = k[k.length - 1], base = k[k.length - 1 - n]
+  return base ? (last.c / base.c - 1) * 100 : last.p
+}
+export type SectorRow = { sector: string; codes: string[]; change: number; weight: number; impact: number }
+/** 按板块汇总自选股：板块涨跌取成员的简单平均；weight 是用户在该板块的仓位，impact 是它对总资产的影响（百分点） */
+export function sectorRows(tick: string, n: number, holdings: Record<string, number>): SectorRow[] {
+  return SECTORS.map((sector) => {
+    const members = STOCKS.filter((s) => s.sector === sector)
+    const ch = members.map((s) => ({ code: s.code, c: changeOver(s.code, tick, n), w: holdings[s.code] ?? 0 }))
+    return { sector, codes: members.map((s) => s.code), change: ch.reduce((a, x) => a + x.c, 0) / ch.length, weight: ch.reduce((a, x) => a + x.w, 0), impact: ch.reduce((a, x) => a + x.w * x.c, 0) }
+  })
+}
 
 // ── 异动 ────────────────────────────────────────────────
 export type Anomaly = Omit<EventDef, 'tick'> & { tick?: string; after?: string; auto: boolean; sortKey: string }
@@ -69,14 +85,17 @@ export type Pref = 'focus' | 'normal' | 'mute'
 export const PREF_LABEL: Record<Pref, string> = { focus: '多提醒我', normal: '正常', mute: '少提醒我' }
 const PREF_FACTOR: Record<Pref, number> = { focus: 1.25, normal: 1, mute: 0.6 }
 export type Level = '高' | '中' | '低'
-export type Grade = { score: number; level: Level; strength: number; weightFactor: number | null; prefFactor: number }
+export type Grade = { score: number; level: Level; strength: number; weightFactor: number | null; prefFactor: number; styleFactor: number }
 
-/** weight 传 null 表示用户还没补充持仓，此时持仓不参与（系数 1）；补充后重仓放大、未持仓缩小。 */
-export function grade(strength: number, weight: number | null, pref: Pref): Grade {
+/**
+ * weight 传 null 表示用户还没补充持仓，此时持仓不参与（系数 1）；补充后重仓放大、未持仓缩小。
+ * style 是按用户投资风格得出的系数（见 profile.ts），没设画像时为 1。
+ */
+export function grade(strength: number, weight: number | null, pref: Pref, style = 1): Grade {
   const weightFactor = weight == null ? null : Math.min(1.4, 0.6 + weight * 4)
   const prefFactor = PREF_FACTOR[pref]
-  const score = Math.min(100, Math.round(strength * (weightFactor ?? 1) * prefFactor))
-  return { score, level: score >= 70 ? '高' : score >= 40 ? '中' : '低', strength, weightFactor, prefFactor }
+  const score = Math.min(100, Math.round(strength * (weightFactor ?? 1) * prefFactor * style))
+  return { score, level: score >= 70 ? '高' : score >= 40 ? '中' : '低', strength, weightFactor, prefFactor, styleFactor: style }
 }
 /** 等级的一句话原因，给第一次用的人看 */
 export function gradeReason(g: Grade): string {
@@ -84,6 +103,8 @@ export function gradeReason(g: Grade): string {
   if (g.weightFactor != null) parts.push(g.weightFactor > 1.05 ? '你的仓位重' : g.weightFactor < 0.95 ? '你的仓位轻或没有持仓' : '你的仓位适中')
   if (g.prefFactor > 1) parts.push('你要求多提醒')
   if (g.prefFactor < 1) parts.push('你要求少提醒')
+  if (g.styleFactor > 1) parts.push('符合你的短线风格')
+  if (g.styleFactor < 1) parts.push('你是长线，短期波动少提醒')
   return parts.join('，')
 }
 

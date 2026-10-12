@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ClipboardCheck, House, Radar, Star, User, type LucideIcon } from 'lucide-react'
 import { anomaliesAt, fmtDate, isFresh, judgmentsAt, PRICE_SOURCE, weekday } from './engine'
 import { Button, cn } from './kit'
+import { profileLabel, profileSet } from './profile'
 import { unreviewed } from './review'
 import { useStore, type Page } from './store'
 import { TodayPage } from './pages/Today'
@@ -17,7 +18,7 @@ const NAV: { key: Page; label: string; icon: LucideIcon }[] = [
 
 /** PC：左侧导航栏 + 右侧内容；手机：顶栏 + 内容 + 底部标签栏。 */
 export function App() {
-  const { page, setPage, onboarded, setOnboarded, tick, prevTick, reviewState } = useStore()
+  const { page, setPage, onboarded, setOnboarded, tick, prevTick, reviewState, profile, openMe } = useStore()
   // 导航上的数字：今天新出现的异动、还没复盘的判断
   const badge: Partial<Record<Page, number>> = {
     today: anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick)).length,
@@ -40,6 +41,10 @@ export function App() {
           ))}
         </nav>
         <div className="mt-auto px-2.5 text-xs leading-relaxed text-steel">
+          <button type="button" onClick={() => openMe('settings')} className="mb-2.5 block w-full rounded-md border border-hairline bg-canvas px-2.5 py-2 text-left hover:bg-surface-soft">
+            <span className="block text-[11px] text-steel">我的画像</span>
+            <span className="block text-[13px] font-medium text-ink">{profileSet(profile) ? profileLabel(profile) : '去设置 →'}</span>
+          </button>
           <p className="font-medium text-slate">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
           <p className="mt-1">演示数据，不构成投资建议。</p>
           <details className="mt-1">
@@ -75,9 +80,9 @@ export function App() {
 }
 
 const STEPS = [
-  { title: '管家帮你盯着自选股', body: '有事情可能影响到你的自选股时，管家会告诉你三件事：发生了什么、为什么和你有关、它怎么看。你不用自己在一堆行情和新闻里找。' },
-  { title: '每个看法到期都能对答案', body: '管家的看法会写成一句能验证的话，比如「5 个交易日内会跌破 34.97」。你可以表态同意或不同意，到期按真实价格看谁对。' },
-  { title: '说对说错，都一起复盘', body: '结果出来后，管家会和你聊：为什么对、为什么错、当时漏看了什么，并总结一条经验记进长期记忆。你也可以写下自己的经验。以后同类情况再出现，这些经验会被拿出来参考。' },
+  { title: '管家帮你盯着自选股', body: '首页两张图：每只自选股和每个板块的涨跌，有异动的会打上圆点。下面是今天和你有关的事。' },
+  { title: '每个看法到期都能对答案', body: '管家的看法写成一句能验证的话，比如「5 个交易日内会跌破 34.97」，旁边的进度条显示离这个价格还有多远。你可以表态，到期看谁对。' },
+  { title: '说对说错，都一起复盘', body: '结果出来后和管家聊一遍，把经验记进长期记忆，下次同类情况会拿出来参考。在「我的」里设好投资画像，管家会按你的风格提醒。' },
 ]
 
 /** 首次打开的三步说明，可以跳过，之后能在「我的 → 设置」里重看。 */

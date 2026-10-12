@@ -3,12 +3,13 @@ import { STOCKS, type Vote } from './data/case'
 import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, type Pref } from './engine'
 import { unreviewed } from './review'
 import type { Link } from './assistant'
+import { profileSet, type Profile } from './profile'
 import type { ReviewState } from './store'
 
 export type Nudge = { id: string; text: string; action?: Link }
-type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState> }
+type Ctx = { tick: string; prevTick?: string; votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; hasHoldings: boolean; reviewState: Record<string, ReviewState>; profile: Profile }
 
-export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState }: Ctx): Nudge[] {
+export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile }: Ctx): Nudge[] {
   const out: Nudge[] = []
   const js = judgmentsAt(tick)
   const fresh = anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick))
@@ -16,11 +17,11 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
 
   // 有结果但还没复盘：对答案之后要总结经验
   const todo = unreviewed(js, reviewState)
-  if (todo.length) out.push({ id: 'review', text: `有 ${todo.length} 条判断出了结果还没复盘。我们一起看看为什么对、为什么错，把经验记下来。`, action: { label: '开始复盘', review: todo[0].id } })
+  if (todo.length) out.push({ id: 'review', text: `${todo.length} 条判断出了结果，还没复盘。`, action: { label: '开始复盘', review: todo[0].id } })
 
   // 持仓股被说中了：事后应对（合成一条）
   const heldHit = recent.filter((j) => j.status === 'hit' && (holdings[j.code] ?? 0) > 0)
-  if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}最近跌破了管家说的价格。可以看看接下来有哪些选择。`, action: { label: '看应对方案', me: 'holdings' } })
+  if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}已跌破管家说的价格。`, action: { label: '看做法', me: 'holdings' } })
   // 我表过态的判断有结果了（合成一条，细节在下面的「有结果了」里）
   const mine = recent.map((j) => ({ j, r: myResult(j, votes[j.id]) })).filter((x) => x.r != null)
   if (mine.length === 1) {
@@ -36,9 +37,11 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
   // 设了「多提醒我」的股票今天有新异动
   for (const s of STOCKS) if (prefs[s.code] === 'focus' && fresh.some((a) => a.hits.includes(s.code)))
     out.push({ id: `focus-${s.code}`, text: `你让我多留意${s.name}，它今天有新的异动。`, action: { label: '去看看', code: s.code } })
+  // 还没设投资画像
+  if (!profileSet(profile)) out.push({ id: 'profile', text: '告诉我你能接受多大的跌幅、一般拿多久，我按你的风格提醒。', action: { label: '设置画像', me: 'settings' } })
   // 还没填持仓，而今天有影响大的事
   if (!hasHoldings && fresh.some((a) => a.tone === 'risk' && a.strength >= 70))
-    out.push({ id: 'add-holdings', text: '今天有影响较大的事件。告诉我你持有哪些股票，我可以按你的仓位排出先看哪条。', action: { label: '补充持仓', me: 'holdings' } })
+    out.push({ id: 'add-holdings', text: '填上持仓，我按你的仓位排出先看哪条。', action: { label: '补充持仓', me: 'holdings' } })
   // 我和管家意见不同的次数够多时，总结一下
   const split = js.filter((j) => votes[j.id] === 'disagree' && (j.status === 'hit' || j.status === 'miss'))
   if (split.length >= 2) {

@@ -37,7 +37,7 @@ export function SignalsPage() {
     <>
       <div className="border-b border-hairline px-4 pb-3 pt-4">
         <h1 className="text-lg font-semibold tracking-tight">信号库</h1>
-        <p className="mt-0.5 text-[13px] text-steel">管家靠这些信号发现异动。共 {SIGNALS.length} 类，已接入 {live} 类。每类都写明看什么、怎样触发、历史上准不准。</p>
+        <p className="mt-0.5 text-[13px] text-steel">管家靠这些信号发现异动。共 {SIGNALS.length} 类，已接入 {live} 类。</p>
         <Button size="xs" className="mt-2.5" onClick={download}><Download className="h-3.5 w-3.5" />导出 Markdown</Button>
       </div>
       <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">

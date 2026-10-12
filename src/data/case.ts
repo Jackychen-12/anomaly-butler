@@ -4,20 +4,22 @@
  * 持仓与「我的表态」是演示用的模拟数据。
  */
 export type Market = 'A' | 'HK' | 'US'
-export type Stock = { code: string; name: string; symbol: string; market: Market }
+export type Stock = { code: string; name: string; symbol: string; market: Market; sector: string }
 
 export const STOCKS: Stock[] = [
-  { code: '002475', name: '立讯精密', symbol: '002475.SZ', market: 'A' },
-  { code: '600519', name: '贵州茅台', symbol: '600519.SH', market: 'A' },
-  { code: '300750', name: '宁德时代', symbol: '300750.SZ', market: 'A' },
-  { code: '00700', name: '腾讯控股', symbol: '00700.HK', market: 'HK' },
-  { code: '01810', name: '小米集团-W', symbol: '01810.HK', market: 'HK' },
-  { code: 'AAPL', name: '苹果', symbol: 'AAPL.US', market: 'US' },
-  { code: 'NVDA', name: '英伟达', symbol: 'NVDA.US', market: 'US' },
-  { code: 'PDD', name: '拼多多', symbol: 'PDD.US', market: 'US' },
+  { code: '002475', name: '立讯精密', symbol: '002475.SZ', market: 'A', sector: '消费电子' },
+  { code: '600519', name: '贵州茅台', symbol: '600519.SH', market: 'A', sector: '白酒' },
+  { code: '300750', name: '宁德时代', symbol: '300750.SZ', market: 'A', sector: '新能源' },
+  { code: '00700', name: '腾讯控股', symbol: '00700.HK', market: 'HK', sector: '互联网' },
+  { code: '01810', name: '小米集团-W', symbol: '01810.HK', market: 'HK', sector: '消费电子' },
+  { code: 'AAPL', name: '苹果', symbol: 'AAPL.US', market: 'US', sector: '消费电子' },
+  { code: 'NVDA', name: '英伟达', symbol: 'NVDA.US', market: 'US', sector: '半导体' },
+  { code: 'PDD', name: '拼多多', symbol: 'PDD.US', market: 'US', sector: '互联网' },
 ]
 /** 「模拟券商导入」载入的演示持仓（占比）。没列出的股票只在自选里、没有持仓。 */
 export const DEMO_HOLDINGS: Record<string, number> = { '002475': 0.18, '600519': 0.22, '300750': 0.15, '00700': 0.12, AAPL: 0.1, NVDA: 0.08 }
+/** 自选股所属的板块，按首页图表的显示顺序 */
+export const SECTORS = ['消费电子', '半导体', '互联网', '新能源', '白酒']
 export const MARKET_LABEL: Record<Market, string> = { A: 'A股', HK: '港股', US: '美股' }
 
 /** 演示数据覆盖的交易日。产品只展示其中一天（见 TODAY）早上开盘前的状态，只用这一刻之前的行情与事件。 */

@@ -1,6 +1,6 @@
 /** 跨页面复用的业务组件：走势图、等级说明、异动正文、判断卡。 */
 import type { ReactNode } from 'react'
-import { evalLine, fmtDate, grade, gradeReason, knownBars, myResult, PREF_LABEL, relatedEvents, signed, signClass, stockOf, whyLine, type Anomaly, type Judgment, type Pref } from './engine'
+import { evalLine, fmtDate, gradeReason, knownBars, myResult, PREF_LABEL, relatedEvents, signed, signClass, stockOf, whyLine, type Anomaly, type Judgment, type Pref } from './engine'
 import type { Vote } from './data/case'
 import { signalOf } from './data/signals'
 import { Button, cn, LevelTag, Stamp, Tag } from './kit'
@@ -40,11 +40,12 @@ export function PriceChart({ code, anomalies, judgment }: { code: string; anomal
 const prevOf = (d: string) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - 1); return t.toISOString().slice(0, 10) }
 
 /** 这条异动有多重要：先给一句话原因，想看细节再展开三项拆解；提醒多少可以就地改。 */
-export function GradeBox({ strength, code }: { strength: number; code: string }) {
-  const { prefs, setPref, weightOf, hasHoldings, openMe } = useStore()
+export function GradeBox({ a, code }: { a: Anomaly; code: string }) {
+  const { prefs, setPref, weightOf, hasHoldings, openMe, gradeOf, profile } = useStore()
   const pref = prefs[code] ?? 'normal'
   const w = weightOf(code)
-  const g = grade(strength, w, pref)
+  const g = gradeOf(a, code)
+  const strength = a.strength
   const Row = ({ label, pct, tone, value }: { label: string; pct: number; tone: string; value: ReactNode }) => (
     <>
       <span className="text-steel">{label}</span>
@@ -61,8 +62,9 @@ export function GradeBox({ strength, code }: { strength: number; code: string })
           <Row label="事件影响" pct={strength} tone="bg-up" value={strength} />
           <Row label="你的仓位" pct={w == null ? 0 : (w / 0.25) * 100} tone="bg-ink" value={w == null ? <span className="text-stone">未填</span> : w ? `${(w * 100).toFixed(0)}%` : '没有持仓'} />
           <Row label="提醒偏好" pct={pref === 'focus' ? 100 : pref === 'normal' ? 60 : 25} tone="bg-primary" value={PREF_LABEL[pref]} />
+          <Row label="投资风格" pct={g.styleFactor > 1 ? 100 : g.styleFactor < 1 ? 35 : 60} tone="bg-primary" value={profile.horizon ? (g.styleFactor > 1 ? '上调' : g.styleFactor < 1 ? '下调' : '不调整') : <span className="text-stone">未设</span>} />
         </div>
-        <p className="mt-2 text-steel">三项相乘得 {g.score} 分：70 分以上为高，40 分以上为中。</p>
+        <p className="mt-2 text-steel">几项相乘得 {g.score} 分：70 分以上为高，40 分以上为中。</p>
         {hasHoldings ? null : <button type="button" onClick={() => openMe('holdings')} className="mt-1 text-link hover:underline">补充持仓后，会按你的仓位调整等级 →</button>}
       </details>
       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-hairline-soft pt-3 text-[13px]">
@@ -122,7 +124,7 @@ export function VoteButtons({ j }: { j: Judgment }) {
       {(['agree', 'disagree', 'watch'] as Vote[]).map((k) => (
         <Button key={k} size="xs" variant={v === k ? 'primary' : k === 'watch' ? 'ghost' : 'secondary'} aria-pressed={v === k} onClick={() => vote(j.id, k, j.text, j.code)}>{VOTE_LABEL[k]}</Button>
       ))}
-      <span className="text-xs text-steel">{v ? '记下了，到期一起对答案' : '你怎么看？到期一起对答案'}</span>
+      <span className="text-xs text-steel">{v ? '记下了' : '到期一起对答案'}</span>
     </div>
   )
 }

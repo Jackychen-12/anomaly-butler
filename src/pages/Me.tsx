@@ -1,13 +1,14 @@
-/** 我的：持仓（可选补充）与调仓方案、长期记忆（经验与管家记下的事）、设置。 */
+/** 我的：投资画像（风险承受与风格）、持仓（可选补充）与调仓方案、长期记忆（经验与管家记下的事）。 */
 import { useEffect, useState } from 'react'
 import { DEMO_HOLDINGS, STOCKS } from '../data/case'
 import { signalOf } from '../data/signals'
-import { fmtDate, grade, judgmentsAt, recentlySettled, stockOf, type Judgment } from '../engine'
+import { fmtDate, judgmentsAt, recentlySettled, stockOf, type Judgment } from '../engine'
+import { conflict, fitPlan, HORIZON_LABEL, profileLabel, profileSet, RISK_LABEL, type Profile } from '../profile'
 import { Button, cn, LevelTag, Tag } from '../kit'
 import { Scroll } from '../layout'
 import { useStore, type Memory, type MeTab } from '../store'
 
-const TABS: { key: MeTab; label: string }[] = [{ key: 'holdings', label: '持仓与调仓' }, { key: 'memory', label: '长期记忆' }, { key: 'settings', label: '设置' }]
+const TABS: { key: MeTab; label: string }[] = [{ key: 'settings', label: '投资画像' }, { key: 'holdings', label: '持仓与调仓' }, { key: 'memory', label: '长期记忆' }]
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`
 
 export function MePage() {
@@ -30,7 +31,7 @@ export function MePage() {
 
 // ── 持仓 ────────────────────────────────────────────────
 function Holdings() {
-  const { holdings, setHoldings, hasHoldings, tick, prefs } = useStore()
+  const { holdings, setHoldings, hasHoldings, tick, gradeOf } = useStore()
   const toDraft = (h: Record<string, number>) => Object.fromEntries(STOCKS.map((s) => [s.code, h[s.code] ? String(Math.round(h[s.code] * 100)) : '']))
   const [draft, setDraft] = useState<Record<string, string>>(() => toDraft(holdings))
   useEffect(() => setDraft(toDraft(holdings)), [holdings])
@@ -50,7 +51,7 @@ function Holdings() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-7 @min-[1000px]:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
       <section className="mt-5 min-w-0">
         <h2 className="text-base font-semibold">我的持仓</h2>
-        <p className="mt-0.5 text-[13px] text-steel">可以不填，不影响使用。填了之后，管家会按你的仓位决定先提醒哪条，并给出调仓的几种做法。数据只存在你的浏览器里。</p>
+        <p className="mt-0.5 text-[13px] text-steel">可以不填。填了之后按你的仓位排提醒，并给出调仓做法。只存在你的浏览器里。</p>
         <div className="mt-3 overflow-x-auto rounded-lg border border-hairline">
           <table className="w-full border-collapse text-sm">
             <thead><tr className="text-left text-xs text-steel [&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-hairline [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium"><th>股票</th><th className="w-[96px]">占总资产</th><th>管家的判断</th></tr></thead>
@@ -66,7 +67,7 @@ function Holdings() {
                           className="h-8 w-14 rounded-sm border border-hairline-strong bg-canvas px-2 text-right text-sm tabular-nums outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                         <span className="text-steel">%</span></label>
                     </td>
-                    <td className="text-[13px] text-slate">{tj ? <span className="flex flex-wrap items-center gap-1.5">{hasHoldings ? <LevelTag level={grade(tj.anomaly.strength, holdings[s.code] ?? 0, prefs[s.code] ?? 'normal').level} /> : null}{tj.status === 'hit' ? '已跌破管家说的价格' : '有一条在等结果'}</span> : <span className="text-stone">—</span>}</td>
+                    <td className="text-[13px] text-slate">{tj ? <span className="flex flex-wrap items-center gap-1.5">{hasHoldings ? <LevelTag level={gradeOf(tj.anomaly, s.code).level} /> : null}{tj.status === 'hit' ? '已跌破管家说的价格' : '有一条在等结果'}</span> : <span className="text-stone">—</span>}</td>
                   </tr>
                 )
               })}
@@ -90,7 +91,7 @@ function Holdings() {
       ) : j ? (
         <section className="min-w-0 @min-[1000px]:mt-5">
           <h2 className="text-base font-semibold">调仓方案</h2>
-          <p className="mt-0.5 text-[13px] text-steel">管家列出几种做法和各自的代价，决定由你来做。这里只做记录，不会下单。</p>
+          <p className="mt-0.5 text-[13px] text-steel">几种做法和代价，决定由你做。只记录、不下单。</p>
           {targets.length > 1 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {targets.map((t) => (
@@ -120,7 +121,7 @@ const PLANS = [
 
 /** 事前（判断还在等结果）和事后（已经跌破）共用：三种做法 + 自己拖比例，实时看到变化。 */
 function Planner({ j }: { j: Judgment }) {
-  const { holdings, remember } = useStore()
+  const { holdings, remember, profile, openMe } = useStore()
   const s = stockOf(j.code)
   const w = holdings[j.code] ?? 0
   const post = j.status === 'hit'
@@ -131,6 +132,8 @@ function Planner({ j }: { j: Judgment }) {
   const drop = Math.abs(j.thr) / 100
   const cash = 1 - Object.values(holdings).reduce((a, b) => a + b, 0)
   const plan = PLANS.find((p) => p.keep === keep)
+  const fit = fitPlan(profile, j)
+  const off = conflict(profile, keep, j)
 
   return (
     <div className="@container mt-3 rounded-lg border border-hairline">
@@ -146,13 +149,15 @@ function Planner({ j }: { j: Judgment }) {
             {PLANS.map((p) => (
               <button key={p.key} type="button" onClick={() => setKeep(p.keep)} aria-pressed={keep === p.keep}
                 className={cn('rounded-md border px-3.5 py-2.5 text-left', keep === p.keep ? 'border-primary bg-tint-lavender' : 'border-hairline hover:bg-surface-soft')}>
-                <span className="flex items-baseline gap-2 text-sm font-semibold">{p.label}<span className="text-[13px] font-normal tabular-nums text-steel">{s.name} {pct(w, 0)} → {pct(w * p.keep, 0)}</span></span>
+                <span className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold">{p.label}<span className="text-[13px] font-normal tabular-nums text-steel">{s.name} {pct(w, 0)} → {pct(w * p.keep, 0)}</span>{fit === p.key ? <span className="rounded-xs bg-tint-lavender px-1.5 text-xs font-medium text-on-lavender">更接近你的风格</span> : null}</span>
                 <span className="mt-0.5 block text-[13px] text-slate">代价：{post ? p.after : p.before}</span>
               </button>
             ))}
           </div>
           <label className="mt-4 block text-[13px] text-steel" htmlFor="keep">或者自己定：保留 <b className="font-medium tabular-nums text-ink">{Math.round(keep * 100)}%</b> 的{s.name}仓位</label>
           <input id="keep" type="range" min={0} max={100} step={5} value={Math.round(keep * 100)} onChange={(e) => setKeep(Number(e.target.value) / 100)} className="mt-1.5 w-full accent-[var(--primary)]" />
+          {off ? <p className="mt-2 rounded-md bg-tint-yellow px-3 py-2 text-[13px] text-on-yellow">{off}决定仍然由你做，记下选择时我会一并记下这次和平时不同。</p> : null}
+          {profileSet(profile) ? null : <button type="button" onClick={() => openMe('settings')} className="mt-2 text-[13px] text-link hover:underline">设置投资画像后，会标出更接近你风格的做法 →</button>}
         </div>
         <div className="rounded-lg bg-surface-soft p-4">
           <p className="eyebrow">这样调整之后</p>
@@ -161,7 +166,7 @@ function Planner({ j }: { j: Judgment }) {
           <Delta label="现金及其他" before={pct(cash)} after={pct(cash + w - after)} changed={keep !== 1} />
           <p className="mt-3 text-xs text-steel">{post ? '「再跌」只是一个假设的幅度，用来比较不同做法。' : `按管家说的跌幅（${Math.abs(j.thr)}%）估算，这是说对时的最小损失，实际可能更大。`}</p>
           <Button variant="primary" className="mt-3 w-full" disabled={saved}
-            onClick={() => { setSaved(true); remember({ kind: 'plan', code: j.code, text: `${s.name}（${post ? '已跌破后' : '等结果期间'}）选择了：${plan ? plan.label : `保留 ${Math.round(keep * 100)}%`}` }) }}>{saved ? '已记下我的选择' : '记下我的选择'}</Button>
+            onClick={() => { setSaved(true); remember({ kind: 'plan', code: j.code, text: `${s.name}（${post ? '已跌破后' : '等结果期间'}）选择了：${plan ? plan.label : `保留 ${Math.round(keep * 100)}%`}${off ? '（和设定的风格不同）' : ''}` }) }}>{saved ? '已记下我的选择' : '记下我的选择'}</Button>
           <p className="mt-2 text-xs text-steel">只做记录，方便日后回头看，不会下单。</p>
         </div>
       </div>
@@ -181,7 +186,7 @@ function Delta({ label, before, after, changed }: { label: string; before: strin
 }
 
 // ── 长期记忆 ────────────────────────────────────────────
-const KIND: Record<Memory['kind'], string> = { vote: '你的表态', note: '你说过的理由', pref: '提醒偏好', plan: '调仓选择', holding: '持仓变化', ask: '问过的问题' }
+const KIND: Record<Memory['kind'], string> = { vote: '你的表态', note: '你说过的理由', plan: '调仓选择', profile: '画像变化', pref: '提醒偏好', holding: '持仓变化', ask: '问过的问题' }
 
 function MemoryList() {
   const { memory, forget, lessons, forgetLesson, openReview, setPage } = useStore()
@@ -243,38 +248,95 @@ function MemoryList() {
   )
 }
 
-// ── 设置 ────────────────────────────────────────────────
-const FIELD = 'h-9 w-full rounded-md border border-hairline-strong bg-canvas px-3 text-sm outline-none placeholder:text-stone focus:border-primary focus:ring-1 focus:ring-primary'
+// ── 投资画像 ────────────────────────────────────────────
+const Q1: { v: NonNullable<Profile['tolerance']>; hint: string }[] = [{ v: 10, hint: '跌一点就难受' }, { v: 20, hint: '能扛一阵' }, { v: 30, hint: '大跌也拿得住' }]
+const Q2: { v: NonNullable<Profile['horizon']>; hint: string; span: number }[] = [{ v: 'short', hint: '几天到几周', span: 12 }, { v: 'mid', hint: '几个月', span: 45 }, { v: 'long', hint: '一年以上', span: 100 }]
+const Q3: { v: NonNullable<Profile['reaction']>; label: string }[] = [{ v: 'cut', label: '先减仓' }, { v: 'hold', label: '先不动，观察' }, { v: 'add', label: '越跌越买' }]
+const CARD = 'rounded-lg border px-3.5 py-3 text-left transition-colors'
+const cardCls = (on: boolean) => cn(CARD, on ? 'border-primary bg-tint-lavender' : 'border-hairline hover:bg-surface-soft')
 
 function Settings() {
-  const { llm, setLlm, setOnboarded, reset, setPage } = useStore()
-  const [form, setForm] = useState(llm)
+  const { profile, setProfile, setOnboarded, reset, setPage } = useStore()
+  const [rule, setRule] = useState('')
   const [confirm, setConfirm] = useState(false)
-  const ready = form.url.trim() && form.key.trim() && form.model.trim()
-  const dirty = JSON.stringify(form) !== JSON.stringify(llm)
+  const set = (p: Partial<Profile>, note: string) => setProfile({ ...profile, ...p }, note)
+  const addRule = () => { const t = rule.trim(); if (!t || profile.rules.length >= 3) return; set({ rules: [...profile.rules, t] }, `加了一条原则：${t}`); setRule('') }
   return (
-    <>
-      <section className="mt-5 max-w-[560px]">
-        <h2 className="text-base font-semibold">模型接口</h2>
-        <p className="mt-0.5 text-[13px] text-steel">接入后，「今日」里的提问由你的模型回答；不接入时用内置规则回答。需要兼容 OpenAI 的 chat/completions 格式。密钥只存在你的浏览器里，请求由浏览器直接发往你填写的地址。</p>
-        <div className="mt-3 flex flex-col gap-3">
-          <label className="text-[13px] text-slate">接口地址<input className={cn(FIELD, 'mt-1')} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://example.com/v1" autoComplete="off" /></label>
-          <label className="text-[13px] text-slate">模型名称<input className={cn(FIELD, 'mt-1')} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} autoComplete="off" /></label>
-          <label className="text-[13px] text-slate">密钥<input className={cn(FIELD, 'mt-1')} type="password" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} autoComplete="off" /></label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.on} disabled={!ready} onChange={(e) => setForm({ ...form, on: e.target.checked })} className="accent-[var(--primary)]" />用这个模型回答提问{ready ? '' : '（先填完上面三项）'}</label>
-          <div><Button variant="primary" disabled={!dirty} onClick={() => setLlm({ ...form, on: form.on && !!ready })}>保存</Button></div>
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-7 @min-[1000px]:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="mt-5 flex min-w-0 flex-col gap-6">
+        <fieldset>
+          <legend className="text-base font-semibold">一只股票，最多能接受跌多少？</legend>
+          <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+            {Q1.map((o) => (
+              <button key={o.v} type="button" aria-pressed={profile.tolerance === o.v} onClick={() => set({ tolerance: o.v }, `能接受的最大跌幅设为 ${o.v}%`)} className={cardCls(profile.tolerance === o.v)}>
+                <span className="flex h-12 items-start gap-1.5" aria-hidden="true"><span className="h-full w-px bg-hairline-strong" /><span className="w-5 rounded-b-[4px] bg-down" style={{ height: `${(o.v / 30) * 100}%` }} /></span>
+                <span className="mt-2 block text-lg font-semibold tabular-nums">−{o.v}%</span>
+                <span className="block text-xs text-steel">{o.hint}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="text-base font-semibold">一般拿多久？</legend>
+          <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+            {Q2.map((o) => (
+              <button key={o.v} type="button" aria-pressed={profile.horizon === o.v} onClick={() => set({ horizon: o.v }, `持有周期设为${HORIZON_LABEL[o.v]}`)} className={cardCls(profile.horizon === o.v)}>
+                <span className="block h-1.5 rounded-full bg-hairline" aria-hidden="true"><span className="block h-full rounded-full bg-ink" style={{ width: `${o.span}%` }} /></span>
+                <span className="mt-2.5 block text-lg font-semibold">{HORIZON_LABEL[o.v]}</span>
+                <span className="block text-xs text-steel">{o.hint}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="text-base font-semibold">遇到大跌，你通常怎么做？</legend>
+          <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+            {Q3.map((o) => (
+              <button key={o.v} type="button" aria-pressed={profile.reaction === o.v} onClick={() => set({ reaction: o.v }, `遇到大跌的习惯设为：${o.label}`)} className={cardCls(profile.reaction === o.v)}>
+                <span className="block text-[15px] font-semibold">{o.label}</span>
+                <span className="block text-xs text-steel">{RISK_LABEL[o.v]}型</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="text-base font-semibold">我的原则 <span className="text-[13px] font-normal text-steel">可选，最多 3 条</span></legend>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {profile.rules.map((r, i) => (
+              <li key={i} className="flex items-center gap-2 rounded-md bg-surface px-3 py-2 text-sm"><span className="min-w-0 flex-1">{r}</span>
+                <button type="button" onClick={() => set({ rules: profile.rules.filter((_, k) => k !== i) }, `删了一条原则：${r}`)} className="shrink-0 text-xs text-steel hover:text-up" aria-label={`删除原则：${r}`}>删除</button></li>
+            ))}
+          </ul>
+          {profile.rules.length < 3 ? (
+            <form onSubmit={(e) => { e.preventDefault(); addRule() }} className="mt-2 flex gap-2">
+              <label htmlFor="rule" className="sr-only">写一条你自己的原则</label>
+              <input id="rule" value={rule} onChange={(e) => setRule(e.target.value)} placeholder="比如：不因为短期波动卖出长期看好的公司" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-md border border-hairline-strong bg-canvas px-3 text-sm outline-none placeholder:text-stone focus:border-primary focus:ring-1 focus:ring-primary" />
+              <Button type="submit" disabled={!rule.trim()}>加上</Button>
+            </form>
+          ) : null}
+        </fieldset>
+      </div>
+
+      <aside className="min-w-0 @min-[1000px]:mt-5">
+        <div className="rounded-lg border border-hairline p-4">
+          <p className="eyebrow">你的画像</p>
+          <p className="mt-1.5 text-lg font-semibold leading-snug">{profileSet(profile) ? profileLabel(profile) : '还没设完'}</p>
+          {profileSet(profile) ? null : <p className="mt-1 text-[13px] text-steel">选完左边三项就生效。</p>}
+          <p className="eyebrow mt-4">管家会怎么用</p>
+          <ul className="mt-1.5 flex flex-col gap-1.5 text-[13px] text-charcoal">
+            <li>按持有周期调整提醒：长线少提醒短期波动，短线多提醒。</li>
+            <li>每条判断旁边，对照你的承受上限说一句。</li>
+            <li>调仓时标出更接近你风格的做法；你选的不一样时提醒一句，决定仍由你做。</li>
+          </ul>
         </div>
-      </section>
-      <section className="mt-8 max-w-[560px]">
-        <h2 className="text-base font-semibold">其他</h2>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button onClick={() => { setOnboarded(false); setPage('today') }}>重新看一遍新手引导</Button>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button size="xs" onClick={() => { setOnboarded(false); setPage('today') }}>重看新手引导</Button>
           {confirm
-            ? <><Button variant="dark" onClick={() => { reset(); setConfirm(false) }}>确认清空</Button><Button variant="ghost" onClick={() => setConfirm(false)}>取消</Button></>
-            : <Button variant="ghost" onClick={() => setConfirm(true)}>清空本地数据</Button>}
+            ? <><Button size="xs" variant="dark" onClick={() => { reset(); setConfirm(false) }}>确认清空</Button><Button size="xs" variant="ghost" onClick={() => setConfirm(false)}>取消</Button></>
+            : <Button size="xs" variant="ghost" onClick={() => setConfirm(true)}>清空本地数据</Button>}
         </div>
-        <p className="mt-2 text-xs text-steel">清空会删除你的表态、提醒偏好、持仓、经验、复盘对话、记录和接口设置，恢复到初次打开的状态。</p>
-      </section>
-    </>
+        <p className="mt-2 text-xs text-steel">清空会删除画像、表态、持仓、经验和记录，恢复到初次打开的状态。</p>
+      </aside>
+    </div>
   )
 }

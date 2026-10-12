@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type Dispatch,
 import type { Answer } from './assistant'
 import { SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
 import { signalOf } from './data/signals'
-import { judgmentsAt, PREF_LABEL, type Judgment, type Pref } from './engine'
+import { grade, judgmentsAt, PREF_LABEL, type Anomaly, type Grade, type Judgment, type Pref } from './engine'
+import { EMPTY_PROFILE, styleFactor, type Profile } from './profile'
 
 export type Page = 'today' | 'watch' | 'review' | 'signals' | 'me'
 const PAGES: Page[] = ['today', 'watch', 'review', 'signals', 'me']
@@ -11,7 +12,7 @@ export type MeTab = 'holdings' | 'memory' | 'settings'
 
 export const VOTE_LABEL: Record<Vote, string> = { agree: '我也这么看', disagree: '我不这么看', watch: '先不表态' }
 /** 管家记下的一件事。day 是记录时演示数据里的日期。 */
-export type Memory = { id: string; day: string; kind: 'vote' | 'note' | 'pref' | 'plan' | 'ask' | 'holding'; text: string; code?: string }
+export type Memory = { id: string; day: string; kind: 'vote' | 'note' | 'pref' | 'plan' | 'ask' | 'holding' | 'profile'; text: string; code?: string }
 /**
  * 一条经验（长期记忆）：从一条有结果的判断里总结出来，按信号归类，以后同类信号出现时拿出来参考。
  * by：管家总结的还是用户自己写的；at：来源判断出结果的日期；seed：演示预置。
@@ -28,6 +29,7 @@ export type ChatMsg = { q: string; a?: Answer; error?: string }
 type Saved = {
   votes: Record<string, Vote>; prefs: Record<string, Pref>; holdings: Record<string, number>; memory: Memory[]; onboarded: boolean; llm: Llm
   lessons: Lesson[]; reviewState: Record<string, ReviewState>; dialog: Record<string, Turn[]>
+  profile: Profile
 }
 type Store = Saved & {
   /** 演示数据里的「今天」（早上开盘前），以及上一个交易日。固定不变 */
@@ -55,6 +57,9 @@ type Store = Saved & {
   /** 用户是否补充过持仓；没有时等级不按仓位调整 */
   hasHoldings: boolean
   weightOf: (code: string) => number | null
+  /** 一条异动对某只股票的等级：事件影响 × 仓位 × 提醒偏好 × 投资风格 */
+  gradeOf: (a: Anomaly, code: string) => Grade
+  setProfile: (p: Profile, note: string) => void
   remember: (m: Omit<Memory, 'id' | 'day'>) => void
   forget: (id: string) => void
   setOnboarded: (v: boolean) => void
@@ -64,7 +69,7 @@ type Store = Saved & {
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
-const KEY = 'anomaly-butler:v3'
+const KEY = 'anomaly-butler:v4'
 /** 演示预置：三条较早的判断已经复盘过，管家的经验已记进长期记忆。只在与实际结算结果一致时预置。 */
 const SEED_REVIEWED = ['j-xm-place', 'j-nv-energy', 'j-xm-su7']
 function fresh(tick: string): Saved {
@@ -73,6 +78,7 @@ function fresh(tick: string): Saved {
     votes: SEED_VOTES, prefs: {}, holdings: {}, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
     lessons: done.map((j) => ({ id: `seed-${j.id}`, jid: j.id, signal: j.anomaly.signal, code: j.code, text: j.review!.lesson, by: 'butler' as const, at: j.settledOn!, seed: true })),
     reviewState: Object.fromEntries(done.map((j) => [j.id, 'kept' as const])), dialog: {},
+    profile: EMPTY_PROFILE,
   }
 }
 function load(tick: string): Saved {
@@ -93,7 +99,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const tick = useMemo(initialTick, [])
   const [saved, setSaved] = useState<Saved>(() => load(tick))
   const [page, setPageState] = useState<Page>(pageFromHash)
-  const [meTab, setMeTab] = useState<MeTab>('holdings')
+  const [meTab, setMeTab] = useState<MeTab>('settings')
   const [code, setCode] = useState<string | null>(null)
   const [chat, setChat] = useState<ChatMsg[]>([])
   const [reviewId, setReviewId] = useState<string | null>(null)
@@ -162,6 +168,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setHoldings: (h, note) => { patch({ holdings: h }); remember({ kind: 'holding', text: note }) },
     hasHoldings,
     weightOf: (c) => (hasHoldings ? saved.holdings[c] ?? 0 : null),
+    gradeOf: (a, c) => grade(a.strength, hasHoldings ? saved.holdings[c] ?? 0 : null, saved.prefs[c] ?? 'normal', styleFactor(saved.profile, signalOf(a.signal)?.group)),
+    setProfile: (p, note) => { patch({ profile: p }); remember({ kind: 'profile', text: note }) },
     remember,
     forget: (id) => setSaved((s) => ({ ...s, memory: s.memory.filter((m) => m.id !== id) })),
     setOnboarded: (v) => patch({ onboarded: v }),

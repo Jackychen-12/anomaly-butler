@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { MARKET_LABEL, STOCKS, type Market, type Stock } from '../data/case'
-import { anomaliesOf, fmtDate, grade, isFresh, judgmentsOf, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
+import { anomaliesOf, fmtDate, isFresh, judgmentsOf, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
 import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
 import { AnomalyBody, GradeBox, JudgmentCard, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
@@ -12,17 +12,17 @@ type Row = { s: Stock; fresh: { a: Anomaly; g: Grade }[]; pending: Judgment[]; t
 type Filter = 'all' | Market | 'alert'
 
 function useRows(): Row[] {
-  const { tick, prevTick, prefs, holdings, weightOf } = useStore()
+  const { tick, prevTick, prefs, holdings, profile, gradeOf } = useStore()
   return useMemo(() => STOCKS.map((s) => {
     const fresh = anomaliesOf(s.code, tick).filter((a) => isFresh(a, tick, prevTick))
-      .map((a) => ({ a, g: grade(a.strength, weightOf(s.code), prefs[s.code] ?? 'normal') }))
+      .map((a) => ({ a, g: gradeOf(a, s.code) }))
       .sort((x, y) => y.g.score - x.g.score)
     // 这一刻刚发出的判断已经体现在新异动里，不重复计入待验证
     const pending = judgmentsOf(s.code, tick).filter((j) => j.status === 'pending' && j.issued !== tick)
     return { s, fresh, pending, top: fresh[0]?.g.score ?? (pending.length ? 1 : 0) }
-    // weightOf 由 holdings 决定
+    // gradeOf 由 holdings、prefs、profile 决定
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [tick, prevTick, holdings, prefs])
+  }), [tick, prevTick, holdings, prefs, profile])
 }
 
 export function WatchPage() {
@@ -41,7 +41,6 @@ export function WatchPage() {
     <>
       <div className="px-4 pb-1 pt-4">
         <h1 className="text-lg font-semibold tracking-tight">自选</h1>
-        <p className="mt-0.5 text-[13px] text-steel">{rows.length} 只 · A股、港股、美股。有异动的排在前面。</p>
       </div>
       <div className="flex items-center gap-0.5 px-3 pb-1.5 pt-1.5">
         {(['all', 'A', 'HK', 'US'] as Filter[]).map((f) => (
@@ -95,7 +94,7 @@ function StockRow({ r, selected, onPick }: { r: Row; selected: boolean; onPick: 
 }
 
 function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
-  const { tick, prevTick, prefs, weightOf, hasHoldings, openMe, openReview } = useStore()
+  const { tick, prevTick, weightOf, hasHoldings, openMe, openReview, gradeOf } = useStore()
   const w = weightOf(code)
   const s = STOCKS.find((x) => x.code === code)!
   const bar = lastBar(code, tick)
@@ -135,7 +134,7 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
         {anomalies.length === 0 ? <p className="rounded-lg bg-surface-soft px-4 py-6 text-sm text-steel">到这一刻为止没有异动。</p> : null}
         <ul>
           {anomalies.map((a) => {
-            const g = grade(a.strength, w, prefs[code] ?? 'normal')
+            const g = gradeOf(a, code)
             const isOpen = open?.id === a.id
             return (
               <li key={a.id} className="border-t border-hairline-soft">
@@ -161,7 +160,7 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
         {open ? (
           <>
             <p className="eyebrow mb-2">这条异动有多重要</p>
-            <GradeBox strength={open.strength} code={code} />
+            <GradeBox a={open} code={code} />
           </>
         ) : null}
         <p className="eyebrow mb-2 mt-5">管家怎么看</p>
