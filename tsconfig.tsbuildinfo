@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/engine.ts","./src/kit.tsx","./src/main.tsx","./src/parts.tsx","./src/store.tsx","./src/data/case.ts","./src/pages/rebalance.tsx","./src/pages/verify.tsx","./src/pages/watch.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/assistant.ts","./src/engine.ts","./src/kit.tsx","./src/main.tsx","./src/parts.tsx","./src/proactive.ts","./src/store.tsx","./src/data/case.ts","./src/data/signals.ts","./src/pages/me.tsx","./src/pages/review.tsx","./src/pages/signals.tsx","./src/pages/today.tsx","./src/pages/watch.tsx"],"version":"5.9.3"}
