@@ -72,7 +72,7 @@ const TARIFF_INVALID = '美方将智能手机、电脑等消费电子列入关�
 
 export const EVENTS: EventDef[] = [
   {
-    id: 'xm-place', signal: 'placement', tick: '2025-03-25', when: '3月25日 盘前', cat: '公司事件', tone: 'risk', strength: 62,
+    id: 'xm-place', signal: 'C07', tick: '2025-03-25', when: '3月25日 盘前', cat: '公司事件', tone: 'risk', strength: 62,
     title: '小米集团配售 8 亿股，每股 53.25 港元',
     hits: ['01810'],
     chain: [
@@ -83,7 +83,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-xm-place', code: '01810', thr: -8, n: 5, invalid: '配售取消或大股东同步增持' }],
   },
   {
-    id: 'nv-energy', signal: 'export-control', tick: '2025-03-27', when: '3月26日', cat: '宏观政策', tone: 'risk', strength: 55,
+    id: 'nv-energy', signal: 'M03', tick: '2025-03-27', when: '3月26日', cat: '宏观政策', tone: 'risk', strength: 55,
     title: '媒体报道：中国拟出台的能效规则或限制英伟达 H20 在华销售',
     hits: ['NVDA'],
     chain: [
@@ -95,7 +95,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-nv-energy', code: 'NVDA', thr: -8, n: 5, invalid: '监管部门澄清规则不针对特定产品' }],
   },
   {
-    id: 'xm-su7', signal: 'incident', tick: '2025-04-01', when: '3月29日 事故，4月1日 公司回应', cat: '公司事件', tone: 'risk', strength: 66,
+    id: 'xm-su7', signal: 'C08', tick: '2025-04-01', when: '3月29日 事故，4月1日 公司回应', cat: '公司事件', tone: 'risk', strength: 66,
     title: '小米 SU7 高速事故引发关注，公司回应将配合调查',
     hits: ['01810'],
     chain: [
@@ -106,7 +106,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-xm-su7', code: '01810', thr: -8, n: 5, invalid: '调查结论排除车辆责任' }],
   },
   {
-    id: 'tariff', signal: 'tariff', tick: '2025-04-03', when: '4月3日 04:00（北京时间）', cat: '宏观政策', tone: 'risk', strength: 92,
+    id: 'tariff', signal: 'M03', tick: '2025-04-03', when: '4月3日 04:00（北京时间）', cat: '宏观政策', tone: 'risk', strength: 92,
     title: '美国宣布「对等关税」，对华加征 34%',
     hits: ['002475', 'AAPL', 'PDD'],
     paths: [
@@ -130,7 +130,7 @@ export const EVENTS: EventDef[] = [
     ],
   },
   {
-    id: 'retaliate', signal: 'tariff', tick: '2025-04-07', when: '4月4日 傍晚', cat: '宏观政策', tone: 'risk', strength: 88,
+    id: 'retaliate', signal: 'M03', tick: '2025-04-07', when: '4月4日 傍晚', cat: '宏观政策', tone: 'risk', strength: 88,
     title: '中国宣布对美全部进口商品加征 34% 关税',
     hits: ['00700', '300750', '01810'],
     paths: [
@@ -149,7 +149,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-tx-retaliate', code: '00700', thr: -8, n: 5, invalid: '中美宣布重启谈判并暂缓加征' }],
   },
   {
-    id: 'huijin', signal: 'market-support', tick: '2025-04-08', when: '4月7日 盘中', cat: '宏观政策', tone: 'relief', strength: 38,
+    id: 'huijin', signal: 'M03', tick: '2025-04-08', when: '4月7日 盘中', cat: '宏观政策', tone: 'relief', strength: 38,
     title: '中央汇金公告增持 ETF，多家央企宣布增持回购',
     hits: ['600519', '300750', '002475'],
     paths: [
@@ -164,7 +164,7 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
-    id: 'pboc-support', signal: 'market-support', tick: '2025-04-08', when: '4月8日 开盘前', cat: '宏观政策', tone: 'relief', strength: 64,
+    id: 'pboc-support', signal: 'M03', tick: '2025-04-08', when: '4月8日 开盘前', cat: '宏观政策', tone: 'relief', strength: 64,
     title: '央行表态支持汇金增持，险资入市比例上调',
     hits: ['600519', '300750'],
     paths: [{ via: '国家队和保险资金买入指数权重股，带动它们企稳回升', codes: ['600519', '300750'] }],
@@ -176,7 +176,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-mt-support', code: '600519', thr: 5, n: 5, invalid: '关税冲突进一步升级，引发新一轮抛售' }],
   },
   {
-    id: 'tariff-104', signal: 'tariff', tick: '2025-04-09', when: '4月8日（美东）', cat: '宏观政策', tone: 'risk', strength: 84,
+    id: 'tariff-104', signal: 'M03', tick: '2025-04-09', when: '4月8日（美东）', cat: '宏观政策', tone: 'risk', strength: 84,
     title: '美国对华关税叠加至 104%，4月9日生效',
     hits: ['NVDA', 'AAPL', 'PDD', '002475'],
     paths: [
@@ -196,7 +196,7 @@ export const EVENTS: EventDef[] = [
     }],
   },
   {
-    id: 'pause', signal: 'tariff', tick: '2025-04-10', when: '4月9日（美东）午后', cat: '宏观政策', tone: 'relief', strength: 60,
+    id: 'pause', signal: 'M03', tick: '2025-04-10', when: '4月9日（美东）午后', cat: '宏观政策', tone: 'relief', strength: 60,
     title: '美国对多数经济体暂缓对等关税 90 天，对华升至 125%',
     hits: ['NVDA', 'AAPL', '002475', 'PDD'],
     paths: [
@@ -211,7 +211,7 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
-    id: 'exempt', signal: 'tariff', tick: '2025-04-14', when: '4月11日（美东）深夜', cat: '宏观政策', tone: 'relief', strength: 58,
+    id: 'exempt', signal: 'M03', tick: '2025-04-14', when: '4月11日（美东）深夜', cat: '宏观政策', tone: 'relief', strength: 58,
     title: '美国豁免智能手机、电脑等产品的对等关税',
     hits: ['002475', 'AAPL', '01810'],
     paths: [{ via: '手机、电脑免于对等关税，果链和品牌厂商压力缓解', codes: ['002475', 'AAPL', '01810'] }],
@@ -223,7 +223,7 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
-    id: 'nv-h20', signal: 'export-control', tick: '2025-04-16', when: '4月15日（美东）盘后', cat: '公司事件', tone: 'risk', strength: 78,
+    id: 'nv-h20', signal: 'M03', tick: '2025-04-16', when: '4月15日（美东）盘后', cat: '公司事件', tone: 'risk', strength: 78,
     title: '英伟达披露 H20 对华出口需许可，预计计提约 55 亿美元',
     hits: ['NVDA'],
     chain: [

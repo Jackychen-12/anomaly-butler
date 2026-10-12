@@ -32,7 +32,7 @@ export const REACTION_LABEL = { cut: '先减仓', hold: '先不动，观察', ad
 export const GOAL_LABEL = { preserve: '保值', steady: '稳健增值', growth: '追求高收益' } as const
 export const EXPERIENCE_LABEL = { new: '新手', mid: '1–3 年', senior: '3 年以上' } as const
 export const FOCUS_LABEL: Record<Focus, string> = { macro: '宏观政策', company: '公司事件', tech: '行情走势' }
-const FOCUS_GROUPS: Record<Focus, SignalGroup[]> = { macro: ['宏观政策', '跨市场传导'], company: ['公司事件'], tech: ['价量', '资金'] }
+const FOCUS_GROUPS: Record<Focus, SignalGroup[]> = { macro: ['宏观政策', '行业'], company: ['公司事件'], tech: ['价量'] }
 
 /** 核心三项（承受跌幅、持有周期、大跌时的习惯）填了，画像就开始起作用 */
 export const profileSet = (p: Profile) => p.tolerance != null && p.horizon != null && p.reaction != null
@@ -59,7 +59,7 @@ export const profileLabel = (p: Profile) => (profileSet(p) ? `${riskType(riskSco
  */
 export function styleFactor(p: Profile, group: SignalGroup | undefined): number {
   if (!group) return 1
-  const shortTerm = group === '价量' || group === '资金'
+  const shortTerm = group === '价量'
   const byHorizon = p.horizon === 'long' && shortTerm ? 0.7 : p.horizon === 'short' && shortTerm ? 1.2 : 1
   const cared = p.focus.some((f) => FOCUS_GROUPS[f].includes(group))
   const byFocus = p.focus.length ? (cared ? 1.15 : 0.9) : 1

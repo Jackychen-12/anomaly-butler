@@ -1,7 +1,6 @@
 /** 主动提示：管家根据记住的事（表态、偏好、持仓）和当天的数据，自己先开口。 */
 import { STOCKS, type Vote } from './data/case'
-import { signalOf } from './data/signals'
-import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, suggestions, type Pref } from './engine'
+import { anomaliesAt, isFresh, judgmentsAt, myResult, recentlySettled, stockOf, type Pref } from './engine'
 import { unreviewed } from './review'
 import type { Link } from './assistant'
 import { profileSet, type Profile } from './profile'
@@ -45,9 +44,6 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
   // 仓位超过自己设的上限
   const over = profile.maxWeight ? Object.entries(holdings).filter(([, w]) => w * 100 > profile.maxWeight!).map(([c]) => stockOf(c).name) : []
   if (over.length) out.push({ id: 'over', text: `${over.join('、')}的仓位超过了你设的上限（${profile.maxWeight}%）。`, action: { label: '看持仓', me: 'holdings' } })
-  // 管家试出了更准的阈值
-  const tip = suggestions(tick)[0]
-  if (tip) out.push({ id: `tip-${tip.signal}`, text: `我试了「${signalOf(tip.signal)?.name}」的几个阈值，${tip.to} 比现在的 ${tip.from} 在历史上更准。`, action: { label: '看看要不要改', page: 'signals' } })
   // 还没设投资画像
   if (!profileSet(profile)) out.push({ id: 'profile', text: '告诉我你能接受多大的跌幅、一般拿多久，我按你的风格提醒。', action: { label: '设置画像', me: 'profile' } })
   // 还没填持仓，而今天有影响大的事

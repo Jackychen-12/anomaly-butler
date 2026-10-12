@@ -8,17 +8,27 @@ import { EMPTY_PROFILE, styleFactor, type PlanChoice, type Profile } from './pro
 
 export type Page = 'today' | 'watch' | 'review' | 'signals' | 'me'
 const PAGES: Page[] = ['today', 'watch', 'review', 'signals', 'me']
-export type MeTab = 'settings' | 'profile' | 'holdings' | 'memory'
+export type MeTab = 'settings' | 'profile' | 'holdings' | 'memory' | 'plan'
 /**
  * 管家设置：这个助理被允许做什么。
  * memory：要不要记下我的表态、理由和选择；tune：要不要自己试更准的阈值并提建议；notify：哪些事可以主动提醒我。
  */
 export type Agent = { memory: boolean; tune: boolean; notify: { review: boolean; holdings: boolean; focus: boolean } }
 export const DEFAULT_AGENT: Agent = { memory: true, tune: true, notify: { review: true, holdings: true, focus: true } }
+/**
+ * 订阅（演示，不扣费），参考 Claude 的订阅制：各档能用的功能基本一样，差的是模型用量。
+ * tier：免费版、Pro、Max（用量是 Pro 的 5 倍或 20 倍）；cycle：月付还是年付；until：到期或下次续费的日期（演示数据里的日期）；
+ * extra：用量用完后按 token 计费接着用（额外用量），只有付费档能开。
+ */
+export type Sub = { tier: 'free' | 'pro' | 'max5' | 'max20'; cycle: 'month' | 'year' | null; until: string | null; extra: boolean }
+export const FREE_SUB: Sub = { tier: 'free', cycle: null, until: null, extra: false }
+/** 存下来的订阅不是现在认识的样子时，回到免费版 */
+const subOf = (s: Partial<Sub> | undefined): Sub =>
+  s && ['pro', 'max5', 'max20'].includes(s.tier ?? '') && (s.cycle === 'month' || s.cycle === 'year') && s.until ? { tier: s.tier!, cycle: s.cycle, until: s.until, extra: !!s.extra } : FREE_SUB
 
 export const VOTE_LABEL: Record<Vote, string> = { agree: '我也这么看', disagree: '我不这么看', watch: '先不表态' }
 /** 管家记下的一件事。day 是记录时演示数据里的日期。 */
-export type Memory = { id: string; day: string; kind: 'vote' | 'note' | 'pref' | 'plan' | 'ask' | 'holding' | 'profile' | 'rule'; text: string; code?: string }
+export type Memory = { id: string; day: string; kind: 'own' | 'vote' | 'note' | 'pref' | 'plan' | 'ask' | 'holding' | 'profile' | 'rule'; text: string; code?: string }
 /**
  * 一条经验（长期记忆）：从一条有结果的判断里总结出来，按信号归类，以后同类信号出现时拿出来参考。
  * by：管家总结的还是用户自己写的；at：来源判断出结果的日期；seed：演示预置。
@@ -43,6 +53,7 @@ type Saved = {
   /** 每条判断上记下的调仓选择。key 是判断 id */
   plans: Record<string, PlanChoice>
   agent: Agent
+  sub: Sub
 }
 type Store = Saved & {
   /** 演示数据里的「今天」（早上开盘前），以及上一个交易日。固定不变 */
@@ -70,6 +81,7 @@ type Store = Saved & {
   /** 记下一次调仓选择，note 写进记忆 */
   savePlan: (jid: string, c: PlanChoice, note: string, code: string) => void
   setAgent: (a: Agent) => void
+  setSub: (s: Sub) => void
   /** judgmentText 用于写进记忆，让用户日后看得懂当时表态的是哪一条 */
   vote: (id: string, v: Vote, judgmentText: string, code: string) => void
   setPref: (code: string, p: Pref) => void
@@ -100,14 +112,14 @@ function fresh(tick: string): Saved {
     votes: SEED_VOTES, prefs: {}, holdings: {}, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
     lessons: done.map((j) => ({ id: `seed-${j.id}`, jid: j.id, signal: j.anomaly.signal, code: j.code, text: j.review!.lesson, by: 'butler' as const, at: j.settledOn!, seed: true })),
     reviewState: Object.fromEntries(done.map((j) => [j.id, 'kept' as const])), dialog: {},
-    profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {}, agent: DEFAULT_AGENT,
+    profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {}, agent: DEFAULT_AGENT, sub: FREE_SUB,
   }
 }
 function load(tick: string): Saved {
   try {
     const base = fresh(tick), got = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Saved>
     // 新加的设置项用默认值补上
-    return { ...base, ...got, rules: { ...base.rules, ...got.rules }, agent: { ...base.agent, ...got.agent, notify: { ...base.agent.notify, ...got.agent?.notify } }, profile: { ...base.profile, ...got.profile } }
+    return { ...base, ...got, rules: { ...base.rules, ...got.rules }, agent: { ...base.agent, ...got.agent, notify: { ...base.agent.notify, ...got.agent?.notify } }, profile: { ...base.profile, ...got.profile }, sub: subOf(got.sub) }
   } catch { return fresh(tick) }
 }
 const pageFromHash = (): Page => {
@@ -209,6 +221,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     remember,
     forget: (id) => setSaved((s) => ({ ...s, memory: s.memory.filter((m) => m.id !== id) })),
     setAgent: (a) => patch({ agent: a }),
+    setSub: (s) => patch({ sub: s }),
     setOnboarded: (v) => patch({ onboarded: v }),
     setLlm: (l) => patch({ llm: l }),
     reset: () => setSaved(fresh(tick)),

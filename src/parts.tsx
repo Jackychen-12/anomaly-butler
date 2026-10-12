@@ -84,7 +84,7 @@ export function AnomalyBody({ a, focus }: { a: Anomaly; focus?: string }) {
   const { tick } = useStore()
   const related = relatedEvents(a, tick)
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="flex flex-col gap-4">
       <div>
         {a.auto ? (
           <>

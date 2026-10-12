@@ -297,7 +297,7 @@ function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments:
             <li key={a.id} className="border-t border-hairline-soft px-3.5 py-2.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <LevelTag level={levelOf(a)} /><StockChip code={a.hits[0]} judged={!!j} />
-                {a.indicators?.map((h) => <Tag key={h.id}>{h.label}</Tag>)}
+                {a.indicators?.map((h) => <Tag key={h.id}><span className="font-mono text-[11px] text-stone">{h.level}</span>{h.label}</Tag>)}
               </div>
               <p className="mt-1.5 text-[13px] text-slate">{whyLine(a, tick)}</p>
               {novice ? <p className="mt-1 text-xs text-steel">{signalOf(a.signal)?.name}：{signalOf(a.signal)?.define}</p> : null}

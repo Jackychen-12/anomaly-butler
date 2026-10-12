@@ -1,7 +1,7 @@
 /** 异动识别、分级与判断结算。所有函数都只使用「当前时间刻度之前」的数据。 */
 import raw from './data/prices.json'
 import { AUTO_JUDGMENTS, CROSS, EVENTS, REVIEWS, SECTORS, STOCKS, type Category, type EventDef, type JudgmentDef, type Review, type Stock, type Vote } from './data/case'
-import { GROUP_LABEL, SIGNAL_SECTIONS, SIGNALS, signalOf, type SignalDef } from './data/signals'
+import { GROUP_LABEL, SIGNAL_SECTIONS, SIGNALS, signalOf, TIER_LABEL, type SignalDef, type Tier } from './data/signals'
 
 /** 日线。t 是换手率（%），部分股票可能没取到 */
 export type Bar = { d: string; o: number; c: number; h: number; l: number; v: number; p: number; t?: number }
@@ -39,66 +39,91 @@ export function sectorRows(tick: string, n: number, holdings: Record<string, num
   })
 }
 
-// ── 规则：微观指标的阈值，用户可以在信号库里调 ─────────────
+// ── 规则：每项指标按哪一档提醒，用户可以在信号库里逐项切换 ─────
 export type Rules = {
-  /** 单日涨跌幅达到多少算大涨大跌（%） */
-  pct: number
-  /** 量比（成交量 ÷ 近 5 日均量）达到多少算放量 */
-  vol: number
-  /** 跌破几日均线 */
-  ma: 5 | 10 | 20
-  /** 换手率达到多少算异常（%） */
-  turnover: number
-  /** 连续下跌几天 */
-  streak: number
-  /** 创几日新低 / 新高 */
-  low: 10 | 20 | 60
-  /** 美股龙头隔夜涨跌幅达到多少，提醒相关的 A 股、港股（%） */
-  cross: number
-  /** 用户关掉的信号 */
+  /** 默认档位：没单独设过的指标都用它 */
+  base: Tier
+  /** 逐项指定的档位。key 是指标编号 */
+  tiers: Record<string, Tier>
+  /** 用户关掉的指标 */
   off: string[]
 }
-export const DEFAULT_RULES: Rules = { pct: 7, vol: 2, ma: 5, turnover: 5, streak: 3, low: 20, cross: 5, off: [] }
+export const DEFAULT_RULES: Rules = { base: 'balanced', tiers: {}, off: [] }
 let RULES: Rules = DEFAULT_RULES
-export const currentRules = () => RULES
+export const tierOf = (id: string, r: Rules = RULES): Tier => r.tiers?.[id] ?? r.base ?? 'balanced'
 
-type Hit = { id: string; label: string; strength: number; detail: string; /** 连跌只在刚满天数那天计入评测样本 */ sample: boolean }
-const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
-/** 量比：当天成交量 ÷ 前 5 个交易日的平均成交量 */
-export const volRatio = (bars: Bar[], i: number) => { const base = avg(bars.slice(Math.max(0, i - 5), i).map((b) => b.v)); return base ? bars[i].v / base : 1 }
-const ma = (bars: Bar[], i: number, n: number) => (i + 1 >= n ? avg(bars.slice(i + 1 - n, i + 1).map((b) => b.c)) : null)
+type SLevel = 'S1' | 'S2' | 'S3'
+type Hit = { id: string; label: string; level: SLevel; strength: number; detail: string }
+const STRENGTH: Record<SLevel, number> = { S1: 35, S2: 62, S3: 90 }
+const median = (xs: number[]) => { const v = [...xs].sort((x, y) => x - y); const m = v.length >> 1; return v.length ? (v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2) : 0 }
+/** RVOL20（日终口径）：当天成交量 ÷ 此前 20 个交易日成交量的中位数。不足 20 日返回 null */
+export const rvol20 = (bars: Bar[], i: number) => { if (i < 20) return null; const base = median(bars.slice(i - 20, i).map((b) => b.v)); return base ? bars[i].v / base : null }
+const ma = (bars: Bar[], i: number, n: number) => (i + 1 >= n ? bars.slice(i + 1 - n, i + 1).reduce((x, b) => x + b.c, 0) / n : null)
+/** ATR14（Wilder 平滑），算到第 i 根为止 */
+function atr14(bars: Bar[], i: number): number | null {
+  if (i < 14) return null
+  const tr = (k: number) => Math.max(bars[k].h - bars[k].l, Math.abs(bars[k].h - bars[k - 1].c), Math.abs(bars[k].l - bars[k - 1].c))
+  let atr = 0
+  for (let k = 1; k <= 14; k++) atr += tr(k) / 14
+  for (let k = 15; k <= i; k++) atr = (atr * 13 + tr(k)) / 14
+  return atr
+}
+/** 三档门槛：稳健 / 平衡 / 进取 */
+const pick = <T,>(t: Tier, steady: T, balanced: T, aggressive: T) => (t === 'steady' ? steady : t === 'aggressive' ? aggressive : balanced)
 
-/** 某只股票某一天触发了哪些微观指标 */
+/**
+ * 某只股票某一天触发了哪些量价指标。只做日线算得出的五项（P02 量比、P05 回撤、P06 技术结构、P10 量价组合、P11 跳空）；
+ * 是否触发按该指标所选档位的门槛，等级（S1–S3）按表里的固定规则，不随档位变。
+ */
 function indicators(bars: Bar[], i: number, r: Rules): Hit[] {
   const b = bars[i], out: Hit[] = []
   const on = (id: string) => !r.off.includes(id)
-  if (b.p <= -r.pct && on('price-drop')) out.push({ id: 'price-drop', label: `大跌 ${Math.abs(b.p).toFixed(2)}%`, strength: Math.min(100, Math.round(Math.abs(b.p) * 6)), detail: `单日跌幅达到 ${r.pct}%`, sample: true })
-  if (b.p >= r.pct && on('price-surge')) out.push({ id: 'price-surge', label: `大涨 ${b.p.toFixed(2)}%`, strength: Math.min(100, Math.round(b.p * 6)), detail: `单日涨幅达到 ${r.pct}%`, sample: true })
-  const vr = volRatio(bars, i)
-  if (i >= 5 && vr >= r.vol && on('vol-ratio')) out.push({ id: 'vol-ratio', label: `量比 ${vr.toFixed(1)}`, strength: Math.min(60, Math.round(20 + vr * 8)), detail: `量比达到 ${r.vol}`, sample: true })
-  const m = ma(bars, i, r.ma), pm = i > 0 ? ma(bars, i - 1, r.ma) : null
-  if (m != null && pm != null && b.c < m && bars[i - 1].c >= pm && on('ma-break')) out.push({ id: 'ma-break', label: `跌破 ${r.ma} 日线`, strength: 30, detail: `收盘价从 ${r.ma} 日均线上方跌到下方`, sample: true })
-  if (b.t != null && b.t >= r.turnover && on('turnover')) out.push({ id: 'turnover', label: `换手率 ${b.t.toFixed(1)}%`, strength: Math.min(55, Math.round(25 + b.t * 2)), detail: `换手率达到 ${r.turnover}%`, sample: true })
-  let run = 0
-  for (let k = i; k >= 0 && bars[k].p < 0; k--) run++
-  if (run >= r.streak && on('losing-streak')) out.push({ id: 'losing-streak', label: `连跌 ${run} 天`, strength: Math.min(60, 35 + (run - r.streak) * 8), detail: `连续下跌达到 ${r.streak} 天`, sample: run === r.streak })
-  if (i + 1 >= r.low && b.c <= Math.min(...bars.slice(i + 1 - r.low, i + 1).map((x) => x.c)) && on('new-low')) out.push({ id: 'new-low', label: `${r.low} 日新低`, strength: 40, detail: `收盘价是近 ${r.low} 个交易日最低`, sample: true })
-  // 上涨也是异动：站上均线、连续上涨、阶段新高
-  if (m != null && pm != null && b.c > m && bars[i - 1].c <= pm && on('ma-up')) out.push({ id: 'ma-up', label: `站上 ${r.ma} 日线`, strength: 30, detail: `收盘价从 ${r.ma} 日均线下方回到上方`, sample: true })
-  let up = 0
-  for (let k = i; k >= 0 && bars[k].p > 0; k--) up++
-  if (up >= r.streak && on('winning-streak')) out.push({ id: 'winning-streak', label: `连涨 ${up} 天`, strength: Math.min(60, 35 + (up - r.streak) * 8), detail: `连续上涨达到 ${r.streak} 天`, sample: up === r.streak })
-  if (i + 1 >= r.low && b.c >= Math.max(...bars.slice(i + 1 - r.low, i + 1).map((x) => x.c)) && on('new-high')) out.push({ id: 'new-high', label: `${r.low} 日新高`, strength: 40, detail: `收盘价是近 ${r.low} 个交易日最高`, sample: true })
+  const add = (id: string, label: string, level: SLevel, detail: string) => out.push({ id, label, level, strength: STRENGTH[level], detail })
+  const rv = rvol20(bars, i)
+
+  // P10 量价组合：日收益 × RVOL20。上涨也是异动，但只记 S1、不写利空
+  if (rv != null && on('P10')) {
+    const [x, y] = pick(tierOf('P10', r), [2, 1.5], [3, 2], [5, 3])
+    if (b.p <= -x && rv >= y) add('P10', `放量下跌 ${Math.abs(b.p).toFixed(2)}% · 量比 ${rv.toFixed(1)}`, b.p <= -8 && rv >= 4 ? 'S3' : b.p <= -3 && rv >= 2 ? 'S2' : 'S1', `日收益不高于 −${x}% 且 RVOL20 不低于 ${y}`)
+    else if (b.p >= x && rv >= y) add('P10', `放量上涨 ${b.p.toFixed(2)}% · 量比 ${rv.toFixed(1)}`, 'S1', `日收益不低于 +${x}% 且 RVOL20 不低于 ${y}（正向活跃，不写利空）`)
+  }
+  // P02 量比：已经并进 P10 的不重复报
+  if (rv != null && on('P02') && !out.some((h) => h.id === 'P10')) {
+    const y = pick(tierOf('P02', r), 1.5, 2, 3)
+    if (rv >= y) add('P02', `量比 ${rv.toFixed(1)}`, 'S1', `RVOL20 不低于 ${y}（活跃度，方向另看价格）`)
+  }
+  // P05 回撤：较近 20 日最高收盘价的回撤。只在回撤创新低那天报，避免天天重复
+  if (i >= 19 && on('P05')) {
+    const win = bars.slice(i - 19, i + 1).map((k) => k.c)
+    const dd = (b.c / Math.max(...win) - 1) * 100, x = pick(tierOf('P05', r), 8, 12, 18)
+    if (dd <= -x && b.c <= Math.min(...win)) add('P05', `20 日回撤 ${Math.abs(dd).toFixed(1)}%`, dd <= -12 ? 'S2' : 'S1', `较 20 日最高收盘价回撤达到 ${x}%`)
+  }
+  // P06 技术结构：收盘跌破 MA20
+  if (i >= 22 && on('P06')) {
+    const below = (k: number, pct: number) => { const m = ma(bars, k, 20); return m != null && bars[k].c < m * (1 - pct / 100) }
+    const t = tierOf('P06', r)
+    const hit = t === 'steady' ? below(i, 1) && !below(i - 1, 1)
+      : t === 'balanced' ? below(i, 1) && below(i - 1, 1) && !below(i - 2, 1) && (rv ?? 0) >= 1.5
+      : below(i, 2) && below(i - 1, 2) && below(i - 2, 2) && !below(i - 3, 2) && (rv ?? 0) >= 2
+    if (hit) add('P06', '跌破 20 日线', below(i - 1, 1) && (rv ?? 0) >= 1.5 ? 'S2' : 'S1', pick(t, '首次收盘跌破 MA20 超过 1%', '连续 2 日低于 MA20 至少 1%，且第二日 RVOL20 不低于 1.5', '连续 3 日低于 MA20 至少 2%，且第三日 RVOL20 不低于 2'))
+  }
+  // P11 开盘跳空：缺口 ÷ 昨日 ATR14
+  const atr = i > 0 ? atr14(bars, i - 1) : null
+  if (atr && on('P11')) {
+    const gap = (b.o / bars[i - 1].c - 1) * 100, g = Math.abs(b.o - bars[i - 1].c) / atr
+    const [k, x] = pick(tierOf('P11', r), [1, 1], [1.5, 2], [2, 3])
+    if (g >= k && Math.abs(gap) >= x) add('P11', `${gap < 0 ? '向下' : '向上'}跳空 ${Math.abs(gap).toFixed(1)}%`, gap < 0 && g >= 1.5 && gap <= -2 ? 'S2' : 'S1', `开盘缺口达到昨日 ATR14 的 ${k} 倍且不小于 ${x}%`)
+  }
   return out
 }
 
 // ── 异动 ────────────────────────────────────────────────
-/** indicators：自动识别的异动里，当天触发了哪些指标 */
-export type Anomaly = Omit<EventDef, 'tick'> & { tick?: string; after?: string; auto: boolean; sortKey: string; indicators?: { id: string; label: string }[] }
+/** indicators：自动识别的异动里，当天触发了哪些指标（带固定等级） */
+export type Anomaly = Omit<EventDef, 'tick'> & { tick?: string; after?: string; auto: boolean; sortKey: string; indicators?: { id: string; label: string; level: SLevel }[] }
 
 const AUTO_FROM = '2025-03-20'
 
-/** 每只股票每天最多一条：把当天触发的指标合在一起，触发得越多强度越高 */
+/** 每只股票每天最多一条：同一天触发的几项指标归并成一件事（它们多半在描述同一次波动），分别保留命中的指标 */
 function autoAnomalies(r: Rules): Anomaly[] {
   const out: Anomaly[] = []
   for (const s of STOCKS) {
@@ -108,17 +133,18 @@ function autoAnomalies(r: Rules): Anomaly[] {
       const hits = indicators(bars, i, r)
       if (!hits.length) return
       const top = [...hits].sort((x, y) => y.strength - x.strength)[0]
-      // 「大跌之后会不会续跌」的判断只在确实触发了大跌时才成立
-      const jd = hits.some((h) => h.id === 'price-drop') ? AUTO_JUDGMENTS[`${s.code}|${b.d}`] : undefined
+      // 「大跌之后会不会续跌」的判断只在确实触发了放量下跌时才成立
+      const jd = hits.some((h) => h.id === 'P10') && b.p < 0 ? AUTO_JUDGMENTS[`${s.code}|${b.d}`] : undefined
+      const rv = rvol20(bars, i)
       out.push({
         id: `auto-${s.code}-${b.d}`, signal: top.id, after: b.d, sortKey: b.d + 'T16', auto: true, cat: '价量' as Category,
         when: `${fmtDate(b.d)} 收盘`, tone: b.p < 0 ? 'risk' : 'relief',
         title: `${s.name}：${hits.map((h) => h.label).join(' · ')}`,
-        indicators: hits.map((h) => ({ id: h.id, label: h.label })),
-        strength: Math.min(100, top.strength + 8 * (hits.length - 1)),
+        indicators: hits.map((h) => ({ id: h.id, label: h.label, level: h.level })),
+        strength: Math.min(100, top.strength + 6 * (hits.length - 1)),
         hits: [s.code],
-        chain: [{ label: '行情', text: `收盘 ${b.c}，涨跌幅 ${signed(b.p)}%，量比 ${volRatio(bars, i).toFixed(1)}${b.t != null ? `，换手率 ${b.t.toFixed(1)}%` : ''}` }],
-        evidence: hits.map((h) => ({ label: '触发规则', text: `${h.detail}。`, source: `信号库 · ${signalOf(h.id)?.name ?? h.id}` })),
+        chain: [{ label: '行情', text: `收盘 ${b.c}，涨跌幅 ${signed(b.p)}%${rv != null ? `，量比（RVOL20）${rv.toFixed(1)}` : ''}` }],
+        evidence: hits.map((h) => ({ label: `${h.id} · ${h.level}`, text: `${h.detail}。`, source: `信号库 · ${signalOf(h.id)?.name ?? h.id}（${TIER_LABEL[tierOf(h.id, r)]}）` })),
         judgments: jd ? [{ ...jd, code: s.code }] : [],
       })
     })
@@ -126,24 +152,25 @@ function autoAnomalies(r: Rules): Anomaly[] {
   return out
 }
 
-/** 跨市场：美股龙头隔夜大涨大跌，提醒自选里和它关系明确的 A 股、港股 */
+/** I03 客户与供应商传导：美股龙头（关键客户）隔夜大涨大跌，提醒自选里和它关系明确的 A 股、港股 */
 function crossAnomalies(r: Rules): Anomaly[] {
-  if (r.off.includes('cross-market')) return []
+  if (r.off.includes('I03')) return []
+  const x = pick(tierOf('I03', r), 3, 5, 8)
   const out: Anomaly[] = []
   for (const [code, map] of Object.entries(CROSS)) {
     const s = stockOf(code)
     for (const b of PRICES[code]) {
-      if (b.d < AUTO_FROM || Math.abs(b.p) < r.cross) continue
+      if (b.d < AUTO_FROM || Math.abs(b.p) < x) continue
       const down = b.p < 0
       out.push({
-        id: `cross-${code}-${b.d}`, signal: 'cross-market', after: b.d, sortKey: b.d + 'T23', auto: true, cat: '跨市场传导' as Category,
+        id: `cross-${code}-${b.d}`, signal: 'I03', after: b.d, sortKey: b.d + 'T23', auto: true, cat: '跨市场传导' as Category,
         when: `${fmtDate(b.d)} 美股收盘`, tone: down ? 'risk' : 'relief',
         title: `${s.name}隔夜${down ? '下跌' : '上涨'} ${Math.abs(b.p).toFixed(2)}%`,
         strength: Math.min(90, Math.round(Math.abs(b.p) * 8)),
         hits: map.codes,
         chain: [{ label: '隔夜', text: `${s.name}收盘 ${b.c}，${down ? '下跌' : '上涨'} ${Math.abs(b.p).toFixed(2)}%` }, { label: '传导', text: map.via }],
         paths: [{ via: map.via, codes: map.codes }],
-        evidence: [{ label: '触发规则', text: `美股龙头单日涨跌幅达到 ${r.cross}%。`, source: '信号库 · 美股龙头隔夜大涨大跌' }],
+        evidence: [{ label: 'I03 · S1', text: `关键客户单日涨跌幅达到 ${x}%。关系是人工指定的，占比未核实。`, source: `信号库 · 供应商与客户传导（${TIER_LABEL[tierOf('I03', r)]}）` }],
         judgments: [],
       })
     }
@@ -161,9 +188,10 @@ function build(r: Rules): Anomaly[] {
 let ALL: Anomaly[] = build(RULES)
 /** 应用用户调过的规则。规则没变时什么都不做 */
 export function configure(r: Rules) {
-  if (JSON.stringify(r) === JSON.stringify(RULES)) return
-  RULES = r
-  ALL = build(r)
+  const next: Rules = { base: r.base ?? 'balanced', tiers: r.tiers ?? {}, off: r.off ?? [] }
+  if (JSON.stringify(next) === JSON.stringify(RULES)) return
+  RULES = next
+  ALL = build(next)
 }
 
 const visible = (a: Anomaly, tick: string) => (a.tick ? a.tick <= tick : a.after! < tick)
@@ -333,23 +361,23 @@ export type SignalEval = RuleEval | EventEval | null
 /** 规则类信号：在全部自选股的日线上回测；事件类信号：统计已发出的判断结果。都只用 tick 之前的数据。rules 不传时用当前规则 */
 export function evaluateSignal(id: string, tick: string, rules: Rules = RULES): SignalEval {
   const def = signalOf(id)
-  // 规划中的信号没有数据；只提醒不判断的事件类信号没有可对答案的样本
-  if (!def || def.kind === 'planned' || (def.kind === 'event' && !def.judges)) return null
+  if (!def || def.kind === 'planned') return null
   if (def.kind === 'rule') {
     const r = { ...rules, off: [] } // 评测不受「关掉」影响
     const samples: RuleEval['samples'] = []
-    // 触发日 p 的涨跌方向决定「继续走」指的是继续跌还是继续涨（方向固定的信号用它自己的方向）
+    // 触发日的涨跌方向决定「延续」指的是继续跌还是继续涨（方向固定的指标用它自己的方向）
     const add = (code: string, d: string, p: number, base: number, fwd: Bar[]) => {
       const down = def.dir === 'down' || (def.dir !== 'up' && p < 0)
       const ext = ((down ? Math.min : Math.max)(...fwd.map((x) => x.c)) / base - 1) * 100
       samples.push({ code, d, p, ext, fwd5: (fwd[FWD - 1].c / base - 1) * 100, ok: down ? ext <= CONT : ext >= -CONT })
     }
-    if (id === 'cross-market') {
+    if (id === 'I03') {
       // 触发看美股龙头，结果看被它带动的 A 股、港股之后 5 个交易日
+      const x = pick(tierOf('I03', r), 3, 5, 8)
       for (const [us, map] of Object.entries(CROSS)) for (const b of knownBars(us, tick)) {
-        if (Math.abs(b.p) < r.cross) continue
+        if (Math.abs(b.p) < x) continue
         for (const code of map.codes) {
-          const bars = knownBars(code, tick), fwd = bars.filter((x) => x.d > b.d).slice(0, FWD), before = bars.filter((x) => x.d <= b.d)
+          const bars = knownBars(code, tick), fwd = bars.filter((k) => k.d > b.d).slice(0, FWD), before = bars.filter((k) => k.d <= b.d)
           if (fwd.length === FWD && before.length) add(code, b.d, b.p, before[before.length - 1].c, fwd)
         }
       }
@@ -358,43 +386,16 @@ export function evaluateSignal(id: string, tick: string, rules: Rules = RULES): 
         const bars = knownBars(s.code, tick)
         bars.forEach((b, i) => {
           if (i + FWD >= bars.length) return // 后面不足 5 个交易日的不计入
-          if (indicators(bars, i, r).some((h) => h.id === id && h.sample)) add(s.code, b.d, b.p, b.c, bars.slice(i + 1, i + 1 + FWD))
+          if (indicators(bars, i, r).some((h) => h.id === id)) add(s.code, b.d, b.p, b.c, bars.slice(i + 1, i + 1 + FWD))
         })
       }
     }
-    samples.sort((a, b) => (a.d < b.d ? 1 : -1))
-    return { kind: 'rule', n: samples.length, cont: samples.filter((x) => x.ok).length, avg5: samples.length ? samples.reduce((a, x) => a + x.fwd5, 0) / samples.length : 0, samples }
+    samples.sort((x, y) => (x.d < y.d ? 1 : -1))
+    return { kind: 'rule', n: samples.length, cont: samples.filter((k) => k.ok).length, avg5: samples.length ? samples.reduce((x, k) => x + k.fwd5, 0) / samples.length : 0, samples }
   }
   const js = judgmentsAt(tick).filter((j) => j.anomaly.signal === id)
   const count = (st: Status) => js.filter((j) => j.status === st).length
   return { kind: 'event', n: js.length, hit: count('hit'), miss: count('miss'), void: count('void'), pending: count('pending') }
-}
-
-/**
- * 主动优化：管家替一个可调参数试几个别的取值，看哪个在历史上「触发后续跌」的比例更高。
- * 只在样本够（至少 6 次）、而且比现在高出 10 个百分点以上时才提出来。
- */
-export type Suggestion = { signal: string; param: 'pct' | 'vol' | 'streak'; from: number; to: number; now: { n: number; rate: number }; then: { n: number; rate: number } }
-const TRY: { signal: string; param: Suggestion['param']; values: number[] }[] = [
-  { signal: 'price-drop', param: 'pct', values: [5, 6, 7, 8, 9, 10] },
-  { signal: 'vol-ratio', param: 'vol', values: [1.5, 2, 2.5, 3] },
-  { signal: 'losing-streak', param: 'streak', values: [2, 3, 4, 5] },
-]
-export function suggestions(tick: string): Suggestion[] {
-  const rate = (e: SignalEval) => (e?.kind === 'rule' && e.n ? { n: e.n, rate: e.cont / e.n } : { n: 0, rate: 0 })
-  const out: Suggestion[] = []
-  for (const t of TRY) {
-    if (RULES.off.includes(t.signal)) continue
-    const now = rate(evaluateSignal(t.signal, tick))
-    let best: Suggestion | null = null
-    for (const v of t.values) {
-      if (v === RULES[t.param]) continue
-      const then = rate(evaluateSignal(t.signal, tick, { ...RULES, [t.param]: v }))
-      if (then.n >= 6 && then.rate >= now.rate + 0.1 && (!best || then.rate > best.then.rate)) best = { signal: t.signal, param: t.param, from: RULES[t.param], to: v, now, then }
-    }
-    if (best) out.push(best)
-  }
-  return out
 }
 
 /** 判断卡上的「同类信号过去怎么样」一句话 */
@@ -421,21 +422,19 @@ export function reviewBySignal(tick: string): { def: SignalDef; hit: number; mis
   }).filter((r) => r.hit + r.miss + r.void > 0)
 }
 
-const MKT: Record<string, string> = { A: 'A股', HK: '港股', US: '美股' }
 /** 信号库导出为 Markdown，作为课题交付物 */
 export function signalsMarkdown(tick: string): string {
-  const lines = ['# 异动监测信息集', '', '每类信号分为「内容」和「评测」两部分。内容说明信号看什么、数据从哪来、怎样触发；评测说明它在历史数据上表现如何。', '',
-    `评测口径（截至 ${fmtDate(tick)}）：规则类信号在 ${STOCKS.length} 只自选股 2025 年以来的真实日线上回测，「延续」指触发后 ${FWD} 个交易日内，收盘价沿信号方向（看跌的信号看下跌，看涨的信号看上涨）较触发日再走 ${Math.abs(CONT)}% 以上；事件类信号统计已发出的判断结果。样本量小，仅供参考。`, '']
+  const lines = ['# 异动监测信息集', '', '共 38 项指标。每项有三档提醒门槛（稳健型更早提醒、平衡型默认、进取型容忍波动）和一套不随偏好变的固定等级（S1–S3）；可能影响不是涨跌预测。',
+    '', `评测口径（截至 ${fmtDate(tick)}）：已接入的量价指标在 ${STOCKS.length} 只自选股 2025 年以来的真实日线上回测，「延续」指触发后 ${FWD} 个交易日内收盘价沿当天方向再走 ${Math.abs(CONT)}% 以上；事件类指标统计已发出的判断结果。阈值未经校准，样本量小，仅供参考。`, '']
   for (const sec of SIGNAL_SECTIONS) for (const g of sec.groups) {
     lines.push(`## ${sec.name} · ${GROUP_LABEL[g]}`, '')
     for (const s of SIGNALS.filter((x) => x.group === g)) {
-      const e = evaluateSignal(s.id, tick)
-      lines.push(`### ${s.name}`, '', `- 状态：${s.kind === 'planned' ? '规划中' : s.kind === 'rule' ? '已接入（规则自动识别）' : '已接入（人工整理事件）'}`,
-        `- 定义：${s.define}`, `- 数据来源：${s.source}`, `- 触发规则：${s.rule}`, ...(s.param ? [`- 可调阈值：当前 ${RULES[s.param]}（默认 ${DEFAULT_RULES[s.param]}）`] : []), `- 适用市场：${s.markets.map((m) => MKT[m]).join('、')}`,
-        `- 是否出判断：${s.judges ? '是' : '否'}`)
+      const e = evaluateSignal(s.id, tick), c = s.spec
+      lines.push(`### ${s.id} ${s.name}`, '', s.intro, '', `- 接入状态：${s.kind === 'planned' ? `未接入（${s.need}）` : s.kind === 'rule' ? '已接入，用日线计算' : '已接入，人工整理事件'}`,
+        `- 稳健型：${c.steady}`, `- 平衡型：${c.balanced}`, `- 进取型：${c.aggressive}`, `- 固定等级：${c.levels}`, `- 可能影响：${c.impact}`,
+        `- 例子（合成）：${c.example}`, `- 反例与误报排除：${c.exclude}`, `- 计算口径：${c.formula}`, `- 当前所选档位：${TIER_LABEL[tierOf(s.id)]}`)
       if (e?.kind === 'rule') lines.push(`- 评测：触发 ${e.n} 次；延续 ${e.cont} 次（${e.n ? Math.round((e.cont / e.n) * 100) : 0}%）；触发后 5 日平均涨跌 ${signed(e.avg5)}%`)
       else if (e?.kind === 'event') lines.push(`- 评测：判断 ${e.n} 条；说对 ${e.hit}，说错 ${e.miss}，作废 ${e.void}，在等结果 ${e.pending}`)
-      else lines.push(s.kind === 'planned' ? '- 评测：数据接入后才有' : '- 评测：只提醒、不出判断，没有可对答案的样本')
       lines.push('')
     }
   }
