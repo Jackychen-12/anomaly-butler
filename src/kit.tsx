@@ -33,8 +33,8 @@ export const LevelTag = ({ level }: { level: Level }) => <Tag tone={LEVEL_TONE[l
 export const LevelDot = ({ level }: { level: Level }) => <Dot tone={LEVEL_DOT[level]} />
 
 const STAMP: Record<Exclude<Status, 'pending'>, { label: string; cls: string }> = {
-  hit: { label: '命中', cls: 'border-up text-up' },
-  miss: { label: '未中', cls: 'border-stone text-steel' },
+  hit: { label: '说对', cls: 'border-up text-up' },
+  miss: { label: '说错', cls: 'border-stone text-steel' },
   void: { label: '作废', cls: 'border-dashed border-hairline-strong text-stone' },
 }
 export const Stamp = ({ status }: { status: Exclude<Status, 'pending'> }) => <span className={cn('stamp', STAMP[status].cls)}>{STAMP[status].label}</span>
@@ -42,4 +42,14 @@ export const Stamp = ({ status }: { status: Exclude<Status, 'pending'> }) => <sp
 /** 涨跌幅色块：A 股习惯红涨绿跌 */
 export function PctPill({ v }: { v: number }) {
   return <span className={cn('inline-block min-w-[64px] rounded-xs px-1.5 py-0.5 text-center text-[13px] font-medium tabular-nums text-white', v > 0 ? 'bg-up' : v < 0 ? 'bg-down' : 'bg-stone')}>{v > 0 ? '+' : v < 0 ? '−' : ''}{Math.abs(v).toFixed(2)}%</span>
+}
+
+/** 术语旁边的小问号：点一下就地展开一两句解释，不用先学一遍。 */
+export function Hint({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="group inline-block align-baseline text-[13px]">
+      <summary className="inline cursor-pointer list-none text-steel underline decoration-dotted underline-offset-2 hover:text-ink [&::-webkit-details-marker]:hidden">{label}</summary>
+      <span className="mt-1 block rounded-md bg-surface px-2.5 py-1.5 text-[13px] font-normal leading-relaxed text-slate">{children}</span>
+    </details>
+  )
 }

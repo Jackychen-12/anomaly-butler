@@ -4,20 +4,20 @@
  * 持仓与「我的表态」是演示用的模拟数据。
  */
 export type Market = 'A' | 'HK' | 'US'
-export type Stock = { code: string; name: string; symbol: string; market: Market; weight: number }
+export type Stock = { code: string; name: string; symbol: string; market: Market }
 
-/** weight：授权证券账户后读到的持仓占比（模拟持仓）。0 表示只在自选里、没有持仓。 */
 export const STOCKS: Stock[] = [
-  { code: '002475', name: '立讯精密', symbol: '002475.SZ', market: 'A', weight: 0.18 },
-  { code: '600519', name: '贵州茅台', symbol: '600519.SH', market: 'A', weight: 0.22 },
-  { code: '300750', name: '宁德时代', symbol: '300750.SZ', market: 'A', weight: 0.15 },
-  { code: '00700', name: '腾讯控股', symbol: '00700.HK', market: 'HK', weight: 0.12 },
-  { code: '01810', name: '小米集团-W', symbol: '01810.HK', market: 'HK', weight: 0 },
-  { code: 'AAPL', name: '苹果', symbol: 'AAPL.US', market: 'US', weight: 0.1 },
-  { code: 'NVDA', name: '英伟达', symbol: 'NVDA.US', market: 'US', weight: 0.08 },
-  { code: 'PDD', name: '拼多多', symbol: 'PDD.US', market: 'US', weight: 0 },
+  { code: '002475', name: '立讯精密', symbol: '002475.SZ', market: 'A' },
+  { code: '600519', name: '贵州茅台', symbol: '600519.SH', market: 'A' },
+  { code: '300750', name: '宁德时代', symbol: '300750.SZ', market: 'A' },
+  { code: '00700', name: '腾讯控股', symbol: '00700.HK', market: 'HK' },
+  { code: '01810', name: '小米集团-W', symbol: '01810.HK', market: 'HK' },
+  { code: 'AAPL', name: '苹果', symbol: 'AAPL.US', market: 'US' },
+  { code: 'NVDA', name: '英伟达', symbol: 'NVDA.US', market: 'US' },
+  { code: 'PDD', name: '拼多多', symbol: 'PDD.US', market: 'US' },
 ]
-export const CASH_WEIGHT = 0.15
+/** 「模拟券商导入」载入的演示持仓（占比）。没列出的股票只在自选里、没有持仓。 */
+export const DEMO_HOLDINGS: Record<string, number> = { '002475': 0.18, '600519': 0.22, '300750': 0.15, '00700': 0.12, AAPL: 0.1, NVDA: 0.08 }
 export const MARKET_LABEL: Record<Market, string> = { A: 'A股', HK: '港股', US: '美股' }
 
 /** 时间机器的刻度：每一格是北京时间当天 08:30 盘前，只能看到这个时刻之前的行情与事件。 */
@@ -42,6 +42,8 @@ export type JudgmentDef = {
 }
 export type EventDef = {
   id: string
+  /** 属于信号库里的哪一类信号 */
+  signal: string
   /** 从哪一格开始可见 */
   tick: string
   /** 事件发生时间的说明 */
@@ -62,7 +64,7 @@ const TARIFF_INVALID = '美方将智能手机、电脑等消费电子列入关�
 
 export const EVENTS: EventDef[] = [
   {
-    id: 'xm-place', tick: '2025-03-25', when: '3月25日 盘前', cat: '公司事件', tone: 'risk', strength: 62,
+    id: 'xm-place', signal: 'placement', tick: '2025-03-25', when: '3月25日 盘前', cat: '公司事件', tone: 'risk', strength: 62,
     title: '小米集团配售 8 亿股，每股 53.25 港元',
     hits: ['01810'],
     chain: [
@@ -73,7 +75,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-xm-place', code: '01810', thr: -8, n: 5, invalid: '配售取消或大股东同步增持' }],
   },
   {
-    id: 'nv-energy', tick: '2025-03-27', when: '3月26日', cat: '宏观政策', tone: 'risk', strength: 55,
+    id: 'nv-energy', signal: 'export-control', tick: '2025-03-27', when: '3月26日', cat: '宏观政策', tone: 'risk', strength: 55,
     title: '媒体报道：中国拟出台的能效规则或限制英伟达 H20 在华销售',
     hits: ['NVDA'],
     chain: [
@@ -85,7 +87,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-nv-energy', code: 'NVDA', thr: -8, n: 5, invalid: '监管部门澄清规则不针对特定产品' }],
   },
   {
-    id: 'xm-su7', tick: '2025-04-01', when: '3月29日 事故，4月1日 公司回应', cat: '公司事件', tone: 'risk', strength: 66,
+    id: 'xm-su7', signal: 'incident', tick: '2025-04-01', when: '3月29日 事故，4月1日 公司回应', cat: '公司事件', tone: 'risk', strength: 66,
     title: '小米 SU7 高速事故引发关注，公司回应将配合调查',
     hits: ['01810'],
     chain: [
@@ -96,7 +98,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-xm-su7', code: '01810', thr: -8, n: 5, invalid: '调查结论排除车辆责任' }],
   },
   {
-    id: 'tariff', tick: '2025-04-03', when: '4月3日 04:00（北京时间）', cat: '宏观政策', tone: 'risk', strength: 92,
+    id: 'tariff', signal: 'tariff', tick: '2025-04-03', when: '4月3日 04:00（北京时间）', cat: '宏观政策', tone: 'risk', strength: 92,
     title: '美国宣布「对等关税」，对华加征 34%',
     hits: ['002475', 'AAPL', 'PDD'],
     chain: [
@@ -115,7 +117,7 @@ export const EVENTS: EventDef[] = [
     ],
   },
   {
-    id: 'retaliate', tick: '2025-04-07', when: '4月4日 傍晚', cat: '宏观政策', tone: 'risk', strength: 88,
+    id: 'retaliate', signal: 'tariff', tick: '2025-04-07', when: '4月4日 傍晚', cat: '宏观政策', tone: 'risk', strength: 88,
     title: '中国宣布对美全部进口商品加征 34% 关税',
     hits: ['00700', '300750', '01810'],
     chain: [
@@ -130,7 +132,7 @@ export const EVENTS: EventDef[] = [
     judgments: [{ id: 'j-tx-retaliate', code: '00700', thr: -8, n: 5, invalid: '中美宣布重启谈判并暂缓加征' }],
   },
   {
-    id: 'huijin', tick: '2025-04-08', when: '4月7日 盘中', cat: '宏观政策', tone: 'relief', strength: 38,
+    id: 'huijin', signal: 'market-support', tick: '2025-04-08', when: '4月7日 盘中', cat: '宏观政策', tone: 'relief', strength: 38,
     title: '中央汇金公告增持 ETF，多家央企宣布增持回购',
     hits: ['600519', '300750', '002475'],
     chain: [
@@ -141,7 +143,7 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
-    id: 'tariff-104', tick: '2025-04-09', when: '4月8日（美东）', cat: '宏观政策', tone: 'risk', strength: 84,
+    id: 'tariff-104', signal: 'tariff', tick: '2025-04-09', when: '4月8日（美东）', cat: '宏观政策', tone: 'risk', strength: 84,
     title: '美国对华关税叠加至 104%，4月9日生效',
     hits: ['NVDA', 'AAPL', 'PDD', '002475'],
     chain: [
@@ -156,7 +158,7 @@ export const EVENTS: EventDef[] = [
     }],
   },
   {
-    id: 'pause', tick: '2025-04-10', when: '4月9日（美东）午后', cat: '宏观政策', tone: 'relief', strength: 60,
+    id: 'pause', signal: 'tariff', tick: '2025-04-10', when: '4月9日（美东）午后', cat: '宏观政策', tone: 'relief', strength: 60,
     title: '美国对多数经济体暂缓对等关税 90 天，对华升至 125%',
     hits: ['NVDA', 'AAPL', '002475', 'PDD'],
     chain: [
@@ -167,7 +169,7 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
-    id: 'exempt', tick: '2025-04-14', when: '4月11日（美东）深夜', cat: '宏观政策', tone: 'relief', strength: 58,
+    id: 'exempt', signal: 'tariff', tick: '2025-04-14', when: '4月11日（美东）深夜', cat: '宏观政策', tone: 'relief', strength: 58,
     title: '美国豁免智能手机、电脑等产品的对等关税',
     hits: ['002475', 'AAPL', '01810'],
     chain: [
@@ -178,7 +180,7 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
-    id: 'nv-h20', tick: '2025-04-16', when: '4月15日（美东）盘后', cat: '公司事件', tone: 'risk', strength: 78,
+    id: 'nv-h20', signal: 'export-control', tick: '2025-04-16', when: '4月15日（美东）盘后', cat: '公司事件', tone: 'risk', strength: 78,
     title: '英伟达披露 H20 对华出口需许可，预计计提约 55 亿美元',
     hits: ['NVDA'],
     chain: [
@@ -200,3 +202,21 @@ export const AUTO_JUDGMENTS: Record<string, Omit<JudgmentDef, 'code'>> = {
 export type Vote = 'agree' | 'disagree' | 'watch'
 /** 演示用的「我的表态」，可以在界面里改。 */
 export const SEED_VOTES: Record<string, Vote> = { 'j-xm-place': 'disagree', 'j-nv-energy': 'disagree', 'j-xm-su7': 'agree' }
+
+/**
+ * 事后复盘：判断结算之后，为什么对或错、当时漏看了什么、对信号规则有什么启示。
+ * expect 是写这段文字时对应的结算结果；与按真实行情算出的结果不一致时不展示。
+ */
+export type Review = { expect: 'hit' | 'miss' | 'void'; why: string; missed: string; lesson: string }
+export const REVIEWS: Record<string, Review> = {
+  'j-xm-place': { expect: 'hit', why: '折价配售叠加前期涨幅较大，获利盘集中兑现，窗口内跌破了触发价。', missed: '判断只依据配售折价，没有考虑当时股价处在阶段高位这一放大因素。', lesson: '折价配售信号可以加入「前 20 日涨幅」作为强度修正。' },
+  'j-nv-energy': { expect: 'miss', why: '报道没有得到官方确认，市场当日消化后没有继续下跌。', missed: '把单一媒体报道当成了政策落地。', lesson: '未经官方确认的报道，强度应下调一档，或只做记录、不出判断。' },
+  'j-xm-su7': { expect: 'hit', why: '事故舆情持续发酵，股价很快跌破触发价。', missed: '同期大盘走弱也贡献了一部分跌幅，判断没有剔除市场因素。', lesson: '事故舆情类信号应改用相对板块的超额跌幅来结算。' },
+  'j-lx-tariff': { expect: 'hit', why: '关税直接打击对美出口链，消息后第一个交易日即跌停。', missed: '命中之后股价继续大幅下跌，判断只说了方向，没有给出幅度区间。', lesson: '高强度的宏观事件应给出分档触发价（例如 −10% 和 −20%）。' },
+  'j-aapl-tariff': { expect: 'hit', why: '关税公布后的第一个交易日，苹果收跌 9.3%。', missed: '判断发出时美股尚未开盘，盘后跌幅其实已经提示了方向和力度。', lesson: '盘后的大幅波动可以用来即时校验宏观事件的强度。' },
+  'j-pdd-tariff': { expect: 'hit', why: '取消小额包裹免税直接影响跨境业务，窗口内跌破触发价。', missed: '免税取消要到 5 月才生效，市场提前一个月就完成了定价。', lesson: '政策生效日晚于公布日时，仍应以公布日作为判断起点。' },
+  'j-tx-retaliate': { expect: 'hit', why: '假期积压的抛压在开市当日集中释放，腾讯当日下跌 12.8%。', missed: '腾讯业务与关税的直接关联不强，下跌主要来自市场整体恐慌，而不是传导链本身。', lesson: '应区分「直接受影响」和「跟随大盘」两种命中，后者不应记为传导链的功劳。' },
+  'j-catl-drop': { expect: 'miss', why: '大跌之后稳市资金入场，股价企稳，窗口内没有跌破触发价。', missed: '判断发出前一天，中央汇金已经公告增持，这个稳市信号被忽略了。', lesson: '出现稳市政策后，「大跌后续跌」类判断应暂停或下调强度。' },
+  'j-xm-drop': { expect: 'miss', why: '单日下跌 20.6% 之后连续反弹，窗口内没有再创新低。', missed: '稳市信号被忽略；而且单日跌幅越极端，短期反弹的可能性越高。', lesson: '单日跌幅超过 15% 时，不宜再做续跌判断。' },
+  'j-nv-104': { expect: 'void', why: '判断发出当天美方宣布暂缓对等关税，事前写明的失效条件触发，不计入战绩。', missed: '政策反复本身就是这一阶段的主要特征，判断的有效期可能撑不过一天。', lesson: '政策类判断的失效条件要写得可以检验，这一条做到了。' },
+}
