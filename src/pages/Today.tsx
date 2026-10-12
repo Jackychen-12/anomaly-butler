@@ -1,7 +1,7 @@
 /**
  * 今日：先用图看全局（自选变化、板块变化），再分「宏观」和「微观」看管家捕捉到的异动——涨的和跌的都算。
  * 宏观是政策和跨市场的事，画出传导路径，除了今天新出现的，也列出近几天还在起作用的；微观是公司自己的事和行情指标。
- * 再往下是「提前看」（未来几天可能明显涨跌的自选股）和最近有结果的判断。右边是提问栏，窄屏时收进底部输入条。
+ * 再往下是最近有结果的判断。右边是提问栏，窄屏时收进底部输入条。
  */
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp, MessageCircle } from 'lucide-react'
@@ -36,8 +36,6 @@ export function TodayPage() {
   const recentMacro = all.filter((a) => scopeOf(a.signal) === '宏观' && !fresh.includes(a) && (a.tick ?? a.after!) >= since)
   const js = judgmentsAt(tick)
   const recent = recentlySettled(tick)
-  // 提前看：管家认为未来几天会明显涨或跌的自选股（还没到对答案那天的判断），今天新发出的排前面
-  const outlook = js.filter((j) => j.status === 'pending').sort((a, b) => (a.issued === b.issued ? (a.n - a.elapsed) - (b.n - b.elapsed) : a.issued < b.issued ? 1 : -1))
   // 管家主动想说的事：宽屏放进右侧对话栏的开场白里，窄屏放在主内容顶部
   const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent }).slice(0, wide ? 3 : 2)
   // 一件事的等级取它影响到的自选里最高的那个
@@ -105,9 +103,6 @@ export function TodayPage() {
             ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的公司事件或指标异动。</p>}
           </Section>
 
-          <Section title="提前看" sub="管家认为未来几天会明显涨或跌的自选股" count={outlook.length}>
-            {outlook.length ? <Rows list={outlook} /> : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">目前没有。管家有看法时会先在这里列出来。</p>}
-          </Section>
           {recent.length ? (
             <Section title="最近有结果" action={<Button size="xs" variant="ghost" onClick={() => st.setPage('review')}>全部 →</Button>}><Rows list={recent.slice(0, 5)} /></Section>
           ) : null}
