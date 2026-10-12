@@ -146,6 +146,7 @@ function Overview({ dotOf }: { dotOf: (code: string) => Level | null }) {
   const period = n === 1 ? '上一个交易日' : '近 5 个交易日'
   const stocks: BarRow[] = STOCKS.map((s) => ({ s, v: changeOver(s.code, tick, n) })).sort((a, b) => a.v - b.v).map(({ s, v }) => ({
     key: s.code, label: s.name.replace('-W', ''), value: v, dot: dotOf(s.code), onClick: () => openStock(s.code),
+    aux: hasHoldings ? (holdings[s.code] ? `仓位 ${Math.round(holdings[s.code] * 100)}%` : '未持有') : undefined,
     tip: `${s.name}（${s.sector}）${period} ${signed(v)}%${dotOf(s.code) ? '，今天有新异动' : ''}${holdings[s.code] ? `，占你持仓 ${Math.round(holdings[s.code] * 100)}%` : ''}`,
   }))
   const sectors = sectorRows(tick, n, holdings)
@@ -153,8 +154,8 @@ function Overview({ dotOf }: { dotOf: (code: string) => Level | null }) {
   const sectorBars: BarRow[] = sectors.map((r) => ({
     key: r.sector, label: r.sector, sub: r.codes.map((c) => stockOf(c).name.replace('-W', '').replace(/(集团|控股|精密|时代|茅台)$/, '')).join(' '), value: r.change,
     dot: r.codes.map(dotOf).sort((a, b) => '高中低'.indexOf(a ?? '低') - '高中低'.indexOf(b ?? '低'))[0] ?? null,
-    note: hasHoldings ? (r.weight ? `你的仓位 ${Math.round(r.weight * 100)}% · 影响总资产 ${signed(r.impact)}%` : '你没有持仓') : undefined,
-    tip: `${r.sector}：自选里 ${r.codes.length} 只的平均涨跌，${period} ${signed(r.change)}%`,
+    aux: hasHoldings ? (r.weight ? `仓位 ${Math.round(r.weight * 100)}%` : '未持有') : undefined,
+    tip: `${r.sector}：自选里 ${r.codes.length} 只的平均涨跌，${period} ${signed(r.change)}%${r.weight ? `；你的仓位 ${Math.round(r.weight * 100)}%，影响总资产 ${signed(r.impact)}%` : ''}`,
   }))
   return (
     <section className="mt-4 rounded-lg border border-hairline" aria-label="自选与板块变化">

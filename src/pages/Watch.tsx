@@ -1,12 +1,13 @@
 /** 自选页：左边的行情列表按今天的重要程度分组（重要、留意、轻微、平静），异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { MARKET_LABEL, STOCKS, type Market, type Stock } from '../data/case'
 import { anomaliesOf, fmtDate, isFresh, judgmentsOf, type Level, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
 import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
 import { AnomalyBody, GradeBox, JudgmentCard, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
 import { Planner } from '../planner'
+import { scopeOf } from '../data/signals'
 import { useStore } from '../store'
 
 type Row = { s: Stock; fresh: { a: Anomaly; g: Grade }[]; pending: Judgment[]; top: number }
@@ -109,6 +110,11 @@ function StockRow({ r, selected, onPick }: { r: Row; selected: boolean; onPick: 
   )
 }
 
+const SCOPES = ['all', '宏观', '微观'] as const
+const KIND_LABEL: Record<string, string> = { 宏观政策: '政策', 跨市场传导: '跨市场', 价量: '行情指标', 公司事件: '公司' }
+/** 异动发生在哪一天：取「什么时候」开头的日期 */
+const dayOf = (a: Anomaly) => a.when.match(/^\d+月\d+日/)?.[0] ?? fmtDate(a.tick ?? a.after!)
+
 function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
   const { tick, prevTick, weightOf, hasHoldings, openMe, openReview, gradeOf } = useStore()
   const w = weightOf(code)
@@ -117,13 +123,24 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
   const anomalies = anomaliesOf(code, tick)
   const judgments = judgmentsOf(code, tick)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [folded, setFolded] = useState(false)
+  const [scope, setScope] = useState<(typeof SCOPES)[number]>('all')
+  const [all, setAll] = useState(false)
   // 默认展开最新的一条；换股票后重新选
-  useEffect(() => setOpenId(null), [code])
+  useEffect(() => { setOpenId(null); setFolded(false); setScope('all'); setAll(false) }, [code])
   const open = anomalies.find((a) => a.id === openId) ?? anomalies[0]
   // 选中的这条异动里，管家针对这只股票的判断（可能没有：判断落在别的股票上，或者这条异动不出判断）
   const focus = judgments.find((j) => j.anomaly.id === open?.id)
   const others = judgments.filter((j) => j.id !== focus?.id)
   const elsewhere = open ? open.judgments.filter((d) => d.code !== code).map((d) => stockOf(d.code).name) : []
+  // 列表：新出现的放最上面（按重要程度排），之前的按日期分组，只先列最近三天
+  const shown = anomalies.filter((a) => scope === 'all' || scopeOf(a.signal) === scope)
+  const fresh = shown.filter((a) => isFresh(a, tick, prevTick)).sort((x, y) => gradeOf(y, code).score - gradeOf(x, code).score)
+  const byDay = new Map<string, Anomaly[]>()
+  for (const a of shown) if (!fresh.includes(a)) { const k = dayOf(a); byDay.set(k, [...(byDay.get(k) ?? []), a]) }
+  const days = [...byDay.entries()].map(([label, items]) => ({ label, items, fresh: false }))
+  const groups = [...(fresh.length ? [{ label: '今天开盘前要看的', items: fresh, fresh: true }] : []), ...(all ? days : days.slice(0, 3))]
+  const hidden = all ? 0 : days.slice(3).reduce((n, d) => n + d.items.length, 0)
   // 持有这只股票时，直接在这里列出调仓做法：优先用选中异动的判断，其次是在等结果的、已经到价的
   const actionable = (j: Judgment) => j.status === 'pending' || j.status === 'hit'
   const plan = w ? [focus, ...judgments].find((j): j is Judgment => !!j && actionable(j)) : undefined
@@ -149,30 +166,49 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
           <PriceChart code={code} anomalies={anomalies} judgment={focus ?? judgments.find((j) => j.status === 'pending')} />
         </div>
 
-        <h3 className="eyebrow mb-1 mt-5">到现在为止的异动 · {anomalies.length} 条（点开看原因和证据）</h3>
+        <div className="mb-1 mt-5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h3 className="text-[15px] font-semibold">异动 <span className="font-normal text-steel">{anomalies.length} 条</span></h3>
+          <div className="ml-auto flex gap-0.5" role="group" aria-label="按类型筛选">
+            {SCOPES.map((k) => {
+              const n = k === 'all' ? anomalies.length : anomalies.filter((a) => scopeOf(a.signal) === k).length
+              return n || k === 'all' ? (
+                <button key={k} type="button" aria-pressed={scope === k} onClick={() => setScope(k)}
+                  className={cn('h-7 rounded-sm px-2.5 text-[13px] text-slate hover:bg-hover', scope === k && 'bg-hover font-medium text-ink')}>{k === 'all' ? '全部' : k} <span className="tabular-nums text-stone">{n}</span></button>
+              ) : null
+            })}
+          </div>
+        </div>
         {anomalies.length === 0 ? <p className="rounded-lg bg-surface-soft px-4 py-6 text-sm text-steel">到这一刻为止没有异动。</p> : null}
-        <ul>
-          {anomalies.map((a) => {
-            const g = gradeOf(a, code)
-            const isOpen = open?.id === a.id
-            return (
-              <li key={a.id} className="border-t border-hairline-soft">
-                <button type="button" onClick={() => setOpenId(a.id)} aria-expanded={isOpen} className="flex w-full items-start gap-3 py-2.5 text-left">
-                  <LevelTag level={g.level} />
-                  <span className="min-w-0 flex-1">
-                    <span className={cn('block text-sm', isOpen ? 'font-semibold' : 'font-medium')}>{a.indicators ? a.indicators.map((h) => h.label).join(' · ') : a.title}</span>
-                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-steel">
-                      <span>{a.cat}</span><span>{a.when}</span>
-                      {a.tone === 'relief' && !a.auto ? <span>好消息</span> : null}
-                      {isFresh(a, tick, prevTick) ? <span className="font-medium text-on-rose">新</span> : null}
-                    </span>
-                  </span>
-                </button>
-                {isOpen ? <div className="mb-4 rounded-lg bg-surface-soft p-4"><AnomalyBody a={a} focus={code} /></div> : null}
-              </li>
-            )
-          })}
-        </ul>
+        {groups.map((g) => (
+          <section key={g.label} className="mt-3">
+            <h4 className="mb-1.5 flex items-center gap-2 text-xs text-steel">{g.fresh ? <span className="rounded-xs bg-tint-rose px-1.5 py-0.5 font-medium text-on-rose">新出现</span> : null}<span className={g.fresh ? '' : 'font-medium text-slate'}>{g.label}</span><span className="h-px flex-1 bg-hairline-soft" /></h4>
+            <ul className="overflow-hidden rounded-lg border border-hairline">
+              {g.items.map((a) => {
+                const g2 = gradeOf(a, code)
+                const isOpen = open?.id === a.id && !folded
+                return (
+                  <li key={a.id} className="border-b border-hairline-soft last:border-b-0">
+                    <button type="button" onClick={() => { setFolded(open?.id === a.id ? !folded : false); setOpenId(a.id) }} aria-expanded={isOpen}
+                      className={cn('flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-surface-soft', open?.id === a.id && 'bg-surface-soft')}>
+                      <LevelTag level={g2.level} />
+                      <span className="w-[52px] shrink-0 text-xs text-steel">{KIND_LABEL[a.cat] ?? a.cat}</span>
+                      <span className="min-w-0 flex-1">
+                        {a.indicators ? (
+                          <span className="flex flex-wrap gap-1">{a.indicators.map((h) => <span key={h.id} className="rounded-xs bg-surface px-1.5 py-0.5 text-[13px] text-charcoal"><span className="mr-1 font-mono text-[11px] text-stone">{h.level}</span>{h.label}</span>)}</span>
+                        ) : <span className={cn('block text-sm', isOpen ? 'font-semibold' : 'font-medium')}>{a.title}</span>}
+                      </span>
+                      {a.tone === 'relief' && !a.auto ? <Tag tone="green">好消息</Tag> : null}
+                      {a.judgments.some((d) => d.code === code) ? <Tag tone="purple">有判断</Tag> : null}
+                      <ChevronDown aria-hidden="true" className={cn('h-4 w-4 shrink-0 text-stone transition-transform', isOpen && 'rotate-180')} />
+                    </button>
+                    {isOpen ? <div className="border-t border-hairline-soft bg-surface-soft px-4 py-4"><p className="mb-3 text-xs text-steel">{a.when}</p><AnomalyBody a={a} focus={code} /></div> : null}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        ))}
+        {hidden ? <button type="button" onClick={() => setAll(true)} className="mt-3 flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-hairline text-[13px] text-slate hover:bg-surface-soft">更早的 {hidden} 条<ChevronDown className="h-4 w-4" /></button> : null}
       </section>
 
       <aside className="border-t border-hairline bg-surface-soft px-4 py-4 @min-[860px]:border-l @min-[860px]:border-t-0">
