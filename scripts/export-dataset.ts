@@ -1,7 +1,7 @@
 /** 把信号库、异动记录和判断的对答案结果导出成 JSON，供 scripts/build_dataset_xlsx.py 生成 Excel。用法：npx tsx scripts/export-dataset.ts > dataset.json */
-import { TICKS } from '../src/data/case'
+import { DEMO_HOLDINGS, STOCKS, TICKS } from '../src/data/case'
 import { POLICIES, SIGNALS, scopeOf } from '../src/data/signals'
-import { anomaliesAt, evaluateSignal, judgmentsAt, knownBars, pathsOf, stockOf } from '../src/engine'
+import { anomaliesAt, configure, DEFAULT_RULES, evaluateSignal, grade, judgmentsAt, knownBars, pathsOf, stockOf, type Anomaly } from '../src/engine'
 
 const asOf = TICKS[TICKS.length - 1]
 const all = (code: string) => knownBars(code, '9999-12-31')
@@ -14,7 +14,23 @@ function move(code: string, from: string, inclusive: boolean) {
   return { name: stockOf(code).name, market: stockOf(code).market, d: bars[i].d, p: r2(bars[i].p), fwd5: i + 5 < bars.length ? r2((fwd.c / bars[i].c - 1) * 100) : null }
 }
 
+/** 按演示持仓算出的提醒等级：取涉及的自选股里最高的一档 */
+const levelOf = (a: Anomaly) => a.hits.map((c) => grade(a.strength, DEMO_HOLDINGS[c] ?? 0, 'normal')).sort((x, y) => y.score - x.score)[0].level
+
+// 信噪比：同一段时间里，原始波动有多少、三档门槛各捕捉到多少、最后需要马上看的有多少
+const FROM = '2025-03-20'
+const days = STOCKS.flatMap((s) => all(s.code).filter((b) => b.d >= FROM && b.d < asOf))
+const tiers = (['steady', 'balanced', 'aggressive'] as const).map((t) => {
+  configure({ ...DEFAULT_RULES, base: t })
+  const as = anomaliesAt(asOf).filter((a) => (a.tick ?? a.after!) >= FROM)
+  const lv = as.map(levelOf)
+  return { tier: t, total: as.length, macro: as.filter((a) => scopeOf(a.signal) === '宏观').length, micro: as.filter((a) => scopeOf(a.signal) === '微观').length, high: lv.filter((l) => l === '高').length, mid: lv.filter((l) => l === '中').length, low: lv.filter((l) => l === '低').length }
+})
+configure(DEFAULT_RULES)
+const snr = { from: FROM, stocks: STOCKS.length, tradingDays: new Set(days.map((b) => b.d)).size, stockDays: days.length, moved2: days.filter((b) => Math.abs(b.p) >= 2).length, moved5: days.filter((b) => Math.abs(b.p) >= 5).length, tiers }
+
 const anomalies = anomaliesAt(asOf).map((a) => ({
+  level: levelOf(a),
   id: a.id, date: a.tick ?? a.after, when: a.when, scope: scopeOf(a.signal), signal: a.signal, cat: a.cat, auto: a.auto, tone: a.tone, strength: a.strength, title: a.title,
   indicators: a.indicators ?? [], chain: a.chain, paths: pathsOf(a).map((p) => ({ via: p.via, names: p.codes.map((c) => stockOf(c).name) })),
   evidence: a.evidence, judgments: a.judgments.map((j) => j.id),
@@ -30,4 +46,4 @@ const judgments = judgmentsAt(asOf).map((j) => ({
 
 const indicators = SIGNALS.map((s) => ({ id: s.id, scope: ['质量', '用户'].includes(s.group) ? '门槛与个人' : scopeOf(s.id), intro: s.intro, kind: s.kind, need: s.need ?? '', judges: s.judges, spec: s.spec, eval: evaluateSignal(s.id, asOf) }))
 
-console.log(JSON.stringify({ asOf, indicators, policies: POLICIES, anomalies, judgments }))
+console.log(JSON.stringify({ asOf, snr, indicators, policies: POLICIES, anomalies, judgments }))

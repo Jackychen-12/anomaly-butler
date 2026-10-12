@@ -1,4 +1,4 @@
-"""把 scripts/export-dataset.ts 导出的 JSON 排成 Excel：指标信息集、异动记录、Agent 评测事件。
+"""把 scripts/export-dataset.ts 导出的 JSON 排成 Excel，只留和题目直接相关的四块：信号集（宏观政策 + 微观指标）、信噪比、异动记录、评测事件。
 用法：npx tsx scripts/export-dataset.ts > dataset.json && python scripts/build_dataset_xlsx.py dataset.json docs/异动监测信息集与评测事件.xlsx   （依赖 openpyxl）"""
 import json, sys
 from openpyxl import Workbook
@@ -43,92 +43,100 @@ def sheet(name, title, sub, head, rows, widths, freeze='C6', fills=None):
     ws.auto_filter.ref = f"A5:{get_column_letter(len(head))}{5 + len(rows)}"
     return ws
 
-inds, anos, jus = d['indicators'], d['anomalies'], d['judgments']
-live = [i for i in inds if i['kind'] != 'planned']
+inds, anos, jus, snr = d['indicators'], d['anomalies'], d['judgments'], d['snr']
+core = [i for i in inds if i['scope'] in ('宏观', '微观')]   # 宏观政策 + 微观指标；质量门槛和个人项归到「信噪比」里讲
+gates = [i for i in inds if i['scope'] == '门槛与个人']
+live = [i for i in core if i['kind'] != 'planned']
 settled = [j for j in jus if j['status'] in ('hit', 'miss')]
 hit = sum(j['status'] == 'hit' for j in jus)
+bal = next(t for t in snr['tiers'] if t['tier'] == 'balanced')
+pc = lambda a, b: f"{round(a / b * 100)}%" if b else ''
 
 # ── 说明 ──
 ws = wb.create_sheet('说明'); ws.sheet_view.showGridLines = False
-ws.column_dimensions['A'].width = 22; ws.column_dimensions['B'].width = 120
-ws['A2'] = '异动监测信息集与 Agent 评测事件'; ws['A2'].font = font(size=16, bold=True)
-ws['A3'] = f'由产品原型「异动管家」导出 · 数据截至 {md(AS_OF)}（2025 年）· 8 只自选股（A股 3、港股 2、美股 3）'; ws['A3'].font = font(color=MUTED)
+ws.column_dimensions['A'].width = 20; ws.column_dimensions['B'].width = 118
+ws['A2'] = '异动监测信息集'; ws['A2'].font = font(size=16, bold=True)
+ws['A3'] = '课题核心：针对「股票行情与资讯信息繁杂，提前洞悉自选标的风险」的诉求，利用 AI 捕捉宏观政策与微观指标的异常信号，提高信噪比。'; ws['A3'].font = font(color=MUTED)
 notes = [
-    ('这份表是什么', '在《异动监测指标设计与分级规则》的 38 项指标基础上，补上三样东西：每项指标在产品里的接入状态和回测结果；按这些指标在真实日线上实际捕捉到的异动记录；管家发出的每条判断从捕捉到复盘的全过程和对答案结果。'),
-    ('指标信息集', f'{len(inds)} 项指标，已接入 {len(live)} 项。三档提醒门槛、固定等级、影响、例子沿用原表；新增大白话解释、接入状态和平衡型门槛下的回测。'),
-    ('异动记录', f'{len(anos)} 条。行情指标类 {sum(a["cat"] == "价量" for a in anos)} 条和跨市场传导 {sum(a["cat"] == "跨市场传导" for a in anos)} 条由规则在日线上自动识别（3月20日起）；宏观政策与公司事件 {sum(not a["auto"] for a in anos)} 条为人工整理。'),
-    ('Agent 评测事件', f'{len(jus)} 条判断，每条 5 个步骤（捕捉异动 → 传导路径 → 给出可验证的判断 → 到期对答案 → 复盘与经验），共 {len(jus) * 5} 步。已有结果的 {len(settled)} 条里说对 {hit} 条、说错 {len(settled) - hit} 条；另有作废 {sum(j["status"] == "void" for j in jus)} 条、在等结果 {sum(j["status"] == "pending" for j in jus)} 条。'),
-    ('和原表的区别', '原表的评测事件是 5 条合成的参考 Trace，未运行。这一版用 2025 年 3–4 月的真实事件和真实收盘价，「对答案」一步是实际算出来的。'),
-    ('哪些是真实的', '日线行情（东方财富，前复权）、指标触发、判断的基准价与结算结果，都由规则在真实数据上计算。'),
-    ('哪些不是', '事件的标题、传导路径、证据摘要和复盘文字是人工整理的，没有调用大模型生成，来源也没有逐条核对；指标阈值沿用原表的候选值，没有校准；判断的幅度和期限是看过数据之后选的，不能当作样本外的准确率。'),
-    ('样本量', '8 只股票、不到 4 个月，样本很小，所有比例只能说明这套流程能跑通，不能说明指标有效。'),
-    ('怎么重新生成', 'npx tsx scripts/export-dataset.ts > dataset.json，再 python scripts/build_dataset_xlsx.py dataset.json <输出路径>'),
+    ('信号集', f'捕捉什么：{len(core)} 项信号，宏观 {sum(i["scope"] == "宏观" for i in core)} 项（政策与行业）、微观 {sum(i["scope"] == "微观" for i in core)} 项（量价与公司）。每项有大白话解释、三档提醒门槛和固定等级。已接入 {len(live)} 项。'),
+    ('信噪比', f'怎么降噪、降了多少：{snr["stockDays"]} 个「股票 × 交易日」里，按平衡型门槛捕捉到 {bal["total"]} 条异动，其中需要马上看的 {bal["high"]} 条。同一张表里列出降噪用的规则。'),
+    ('异动记录', f'实际捕捉到了什么：{len(anos)} 条，每条带当日涨跌和之后 5 日涨跌，可以回头核对。'),
+    ('评测事件', f'捕捉得准不准：管家发出的 {len(jus)} 条可验证判断，用真实收盘价对答案。有结果的 {len(settled)} 条里说对 {hit} 条、说错 {len(settled) - hit} 条。'),
+    ('数据范围', f'8 只自选股（A股 3、港股 2、美股 3），2025 年 {md(snr["from"])} 至 {md(AS_OF)}，真实日线（东方财富，前复权）。'),
+    ('读数时注意', '样本只有 8 只股票、20 个交易日，比例只能说明流程能跑通。阈值是候选值，没有校准。事件、传导路径和复盘文字是人工整理的，没有调用大模型，来源未逐条核对。判断的幅度和期限是看过数据后选的，不能当作样本外准确率。'),
 ]
 for r, (k, v) in enumerate(notes, 5):
     ws.cell(r, 1, k).font = font(bold=True); ws.cell(r, 2, v).font = font()
     for c in (1, 2): ws.cell(r, c).alignment = Alignment(vertical='top', wrap_text=True); ws.cell(r, c).border = Border(bottom=thin)
 
-# ── 指标信息集 ──
+# ── 信号集 ──
 def ev(i):
     e = i['eval']
-    if not e: return ['', '', '', '']
-    if e['kind'] == 'rule': return [e['n'], e['cont'], f"{round(e['cont'] / e['n'] * 100)}%" if e['n'] else '', sg(e['avg5']) if e['n'] else '']
-    return [e['n'], f"说对 {e['hit']} / 说错 {e['miss']} / 作废 {e['void']} / 在等 {e['pending']}", '', '']
-rows = [[i['id'], i['scope'], i['spec']['layer'], i['spec']['name'], i['intro'], KIND[i['kind']], i['need'], i['spec']['steady'], i['spec']['balanced'], i['spec']['aggressive'], i['spec']['levels'], i['spec']['impact'], *ev(i), i['spec']['example'], i['spec']['exclude']] for i in inds]
-sheet('指标信息集', '异动监测指标 · 内容、门槛与回测', f'{len(inds)} 项 | 已接入 {len(live)} 项 | H—J 为三档提醒门槛（用户可逐项切换、开关），K 为固定等级 | 回测按平衡型门槛，截至 {md(AS_OF)}，阈值未校准',
-      ['ID', '宏观/微观', '指标层级', '指标', '大白话解释', '接入状态', '缺什么数据', '稳健型 · 更早提醒', '平衡型 · 默认', '进取型 · 容忍波动', '异动等级 · 不随档位变', '可能影响 · 非涨跌预测', '回测触发次数 / 判断条数', '5日内同向再走5%以上（次）/ 判断结果', '延续比例', '触发后5日平均涨跌', '例子（合成）', '反例与误报排除'],
-      rows, [7, 11, 16, 24, 52, 20, 26, 32, 32, 32, 40, 36, 12, 22, 10, 12, 46, 42], 'E6',
-      [(6, 'live' if i['kind'] == 'rule' else 'event') if i['kind'] != 'planned' else None for i in inds])
+    if not e: return ''
+    if e['kind'] == 'rule': return f"触发 {e['n']} 次，之后 5 日同向再走 5% 以上 {e['cont']} 次（{pc(e['cont'], e['n'])}）" if e['n'] else '触发 0 次'
+    return f"判断 {e['n']} 条：说对 {e['hit']}、说错 {e['miss']}、作废 {e['void']}、在等 {e['pending']}"
+rows = [[i['id'], i['scope'], i['spec']['name'], i['intro'], i['spec']['steady'], i['spec']['balanced'], i['spec']['aggressive'], i['spec']['levels'], KIND[i['kind']] + (f"（{i['need']}）" if i['need'] else ''), ev(i)] for i in core]
+sheet('信号集', '信号集 · 捕捉哪些宏观政策与微观指标的异常', f'{len(core)} 项 | 已接入 {len(live)} 项 | E—G 是三档提醒门槛，用户可按自己的风格选，也可逐项开关；H 是固定等级，不随档位变 | 回测截至 {md(AS_OF)}',
+      ['ID', '宏观 / 微观', '信号', '它在看什么（大白话）', '稳健型 · 更早提醒', '平衡型 · 默认', '进取型 · 容忍波动', '异动等级', '接入状态', '回测 / 评测'],
+      rows, [7, 11, 24, 54, 32, 32, 32, 40, 30, 40], 'D6', [(9, 'live' if i['kind'] == 'rule' else 'event') if i['kind'] != 'planned' else None for i in core])
 
-# ── 八类政策 ──
-sheet('八类政策', 'M03 产业监管与贸易政策 · 八类', '沿用原表。四门槛：正式证据 → 实质变化 → 公司实际适用 → 重要影响。',
-      ['ID', '政策类别', '引入的内容', '影响传导', '触发判断', '合成例子'], [[p['id'], p['name'], p['content'], p['path'], p['trigger'], p['example']] for p in d['policies']], [10, 24, 52, 40, 50, 56])
+# ── 信噪比 ──
+ws = wb.create_sheet('信噪比'); ws.sheet_view.showGridLines = False
+for col, w in zip('ABCDEFG', [30, 16, 16, 16, 16, 16, 60]): ws.column_dimensions[col].width = w
+ws['A2'] = '信噪比 · 从繁杂的行情里筛出要看的'; ws['A2'].font = font(size=16, bold=True)
+ws['A3'] = f'{snr["stocks"]} 只自选股，{md(snr["from"])} 至 {md(AS_OF)} 共 {snr["tradingDays"]} 个交易日 | 等级按演示持仓计算'; ws['A3'].font = font(color=MUTED)
+def table(r0, head, rows, bold_col=None):
+    for c, h in enumerate(head, 1):
+        x = ws.cell(r0, c, h); x.font = font(color=MUTED, bold=True); x.fill = PatternFill('solid', fgColor=FILL['head']); x.alignment = Alignment(vertical='center', wrap_text=True); x.border = Border(bottom=thin, top=thin)
+    for r, row in enumerate(rows, r0 + 1):
+        for c, v in enumerate(row, 1):
+            x = ws.cell(r, c, v); x.font = font(bold=(c == 1 or c == bold_col)); x.border = Border(bottom=thin)
+            x.alignment = Alignment(vertical='top', wrap_text=True, horizontal='right' if isinstance(v, (int, float)) else 'left')
+    return r0 + len(rows) + 2
+ws['A5'] = '一、筛了多少'; ws['A5'].font = font(size=12, bold=True)
+n0 = snr['stockDays']
+r = table(6, ['一层一层筛', '数量', '相当于原始的', '', '', '', '说明'], [
+    ['原始：股票 × 交易日', n0, '100%', '', '', '', '用户每天要面对的全部行情'],
+    ['其中涨跌超过 2% 的', snr['moved2'], pc(snr['moved2'], n0), '', '', '', '只看涨跌幅的话，将近一半的日子都在「异动」'],
+    ['捕捉到的异动（平衡型）', bal['total'], pc(bal['total'], n0), '', '', '', f'宏观 {bal["macro"]} 条 + 微观 {bal["micro"]} 条；同一只股票同一天的几项指标归并成一条；一条宏观事件可能涉及几只股票，所以比例只是量级对比'],
+    ['其中需要马上看的（高）', bal['high'], pc(bal['high'], n0), '', '', '', '强度 × 仓位 × 个人偏好之后排在最前的；其余进「留意」和「轻微」'],
+], 2)
+ws.cell(r, 1, '二、三档门槛各捕捉多少').font = font(size=12, bold=True)
+TL = {'steady': '稳健型 · 更早提醒', 'balanced': '平衡型 · 默认', 'aggressive': '进取型 · 容忍波动'}
+r = table(r + 1, ['档位', '异动合计', '宏观', '微观', '高', '中 / 低', '说明'], [[TL[t['tier']], t['total'], t['macro'], t['micro'], t['high'], f"{t['mid']} / {t['low']}", {'steady': '门槛低，提醒多，适合不想漏的人', 'balanced': '默认档位', 'aggressive': '门槛高，只留大的波动'}[t['tier']]] for t in snr['tiers']], 2)
+ws.cell(r, 1, '三、靠什么降噪').font = font(size=12, bold=True)
+rules = [
+    ['三档门槛，可逐项开关', '', '', '', '', '', '同一项指标，稳健、平衡、进取三档门槛不同；不想看的指标可以直接关掉。'],
+    ['同日归并', '', '', '', '', '', '一只股票一天里触发的几项量价指标，多半在描述同一次波动，合成一条提醒。'],
+    ['宏观事件走传导路径', '', '', '', '', '', '一条政策只提醒它实际传得到的自选股，并说明通过哪条途径；传不到的不提醒。'],
+    ['按仓位和偏好排序', '', '', '', '', '', '提醒等级 = 信号强度 × 持仓占比 × 对这只股票的关注度 × 投资画像，仓位重的排前面。'],
+    ['事后对答案', '', '', '', '', '', '有判断的异动到期用真实收盘价结算，说对说错都记一条经验，供回头调门槛时参考（目前不会自动改门槛）。'],
+] + [[f"{i['id']} {i['spec']['name']}", '', '', '', '', '', i['intro'] + ('（' + i['need'] + '）' if i['need'] else '')] for i in gates]
+r = table(r + 1, ['规则', '', '', '', '', '', '做法'], rules)
+ws.freeze_panes = 'B5'
 
 # ── 异动记录 ──
 rows = []
 for n, a in enumerate(anos, 1):
     mv = a['moves']
-    rows.append([f"A{n:02d}", a['date'], a['scope'], a['cat'], a['signal'], ' / '.join(sorted({h['level'] for h in a['indicators']})) or '—', a['strength'], '风险' if a['tone'] == 'risk' else '利好或缓解',
-                 a['title'], '；'.join(f"{h['id']} {h['label']}" for h in a['indicators']) or '；'.join(f"{p['via']} → {'、'.join(p['names'])}" for p in a['paths']),
-                 '、'.join(f"{m['name']}（{MARKET[m['market']]}）" for m in mv), '；'.join(f"{m['name']} {sg(m['p'])}" for m in mv), '；'.join(f"{m['name']} {sg(m['fwd5'])}" for m in mv if m['fwd5'] is not None),
-                 '；'.join(f"{e['text']}〔{e['source']}〕" for e in a['evidence']), '自动 · 规则识别' if a['auto'] else '人工整理', '、'.join(a['judgments']) or '—'])
-sheet('异动记录', '异动记录 · 这套指标实际捕捉到了什么', f'{len(anos)} 条，按日期排列 | 涨跌为事件可见后第一个交易日的涨跌，「之后5日」为再往后 5 个交易日的累计涨跌 | 截至 {md(AS_OF)}',
-      ['编号', '日期', '宏观/微观', '类别', '主指标', '等级', '强度(0-100)', '性质', '异动', '命中指标 / 传导路径', '涉及自选股', '当日涨跌', '之后5日累计涨跌', '依据与来源', '识别方式', '对应判断'],
-      rows, [7, 12, 10, 12, 8, 9, 10, 11, 46, 56, 26, 28, 28, 60, 16, 16], 'C6')
+    rows.append([f"A{n:02d}", a['date'], a['scope'], a['signal'], a['level'], a['title'], '、'.join(m['name'] for m in mv), '；'.join(f"{m['name']} {sg(m['p'])}" for m in mv) if len(mv) > 1 else sg(mv[0]['p']) if mv else '',
+                 '；'.join(f"{m['name']} {sg(m['fwd5'])}" for m in mv if m['fwd5'] is not None) if len(mv) > 1 else (sg(mv[0]['fwd5']) if mv else ''), '规则识别' if a['auto'] else '人工整理'])
+sheet('异动记录', '异动记录 · 实际捕捉到了什么', f'{len(anos)} 条，按日期排列 | 等级按演示持仓计算 | 「当日」是事件可见后第一个交易日的涨跌，「之后 5 日」是再往后 5 个交易日的累计涨跌',
+      ['编号', '日期', '宏观 / 微观', '信号', '提醒等级', '异动', '涉及自选股', '当日涨跌', '之后 5 日涨跌', '识别方式'],
+      rows, [7, 12, 11, 8, 10, 62, 28, 30, 30, 12], 'C6', [(5, {'高': 'miss', '中': 'pending', '低': 'void'}[a['level']]) for a in anos])
 
-# ── 评测事件（一条判断一行）──
-order = {j['id']: f"T{n:02d}" for n, j in enumerate(jus, 1)}
+# ── 评测事件 ──
 def outcome(j):
-    far = f"窗口内收盘最{'高' if j['up'] else '低'} {sg(j['worst'])}" if j['worst'] is not None else '窗口内还没有收盘数据'
-    if j['status'] == 'hit': return f"{md(j['settledOn'])} 收盘{'涨过' if j['up'] else '跌破'} {j['line']}，第 {j['elapsed']} 个交易日。{far}。"
-    if j['status'] == 'miss': return f"{j['n']} 个交易日走完，没有{'涨过' if j['up'] else '跌破'} {j['line']}。{far}。"
-    if j['status'] == 'void': return f"{md(j['settledOn'])} 失效条件触发：{j['voidOn']['text'] if j['voidOn'] else ''}。不计入战绩。"
-    return f"已过 {j['elapsed']} / {j['n']} 个交易日，{far}；{md(j['dueDate']) + ' 到期' if j['dueDate'] else '到期日超出数据范围'}。"
-rows = [[order[j['id']], j['issued'], j['event'], j['signal'], f"{j['name']}（{MARKET[j['market']]}）", '看涨' if j['up'] else '看跌', j['text'], j['invalid'], outcome(j), STATUS[j['status']],
-         (j['review'] or {}).get('why', ''), (j['review'] or {}).get('missed', ''), (j['review'] or {}).get('lesson', '')] for j in jus]
-sheet('评测事件', 'Agent 评测事件 · 每条判断的输入、输出与结果', f'{len(jus)} 条判断 | 已有结果 {len(settled)} 条：说对 {hit}、说错 {len(settled) - hit} | 结果由真实收盘价结算，截至 {md(AS_OF)} | 步骤明细见「评测步骤」',
-      ['Trace ID', '发出日', '事件', '指标', '判断对象', '方向', '管家的判断（可验证）', '事前写明的失效条件', '实际结果', '判定', '为什么对 / 错', '当时漏看了什么', '记下的经验'],
-      rows, [9, 12, 42, 8, 18, 8, 52, 40, 52, 10, 46, 46, 46], 'D6', [(10, j['status']) for j in jus])
-
-# ── 评测步骤（一条判断五步）──
-rows, fills = [], []
-for j in jus:
-    t, auto = order[j['id']], j['anomaly'].startswith(('auto-', 'cross-'))
-    chain = '；'.join(f"{c['label']}：{c['text']}" for c in j['chain'])
-    evd = '；'.join(f"{e['text']}〔{e['source']}〕" for e in j['evidence'])
-    done = j['status'] != 'pending'
-    steps = [
-        ('捕捉异动', f"{'日线行情（截至发出日前一个交易日）' if auto else '政策与公司公告原文'}：{j['when']}", f"归入 {j['signal']}。{evd}", '归类正确；依据是正式来源或真实行情；没有用到发出日之后的信息', '已运行 · 规则计算' if auto else '人工整理 · 来源未逐条核对'),
-        ('传导路径', f"自选清单 + {chain}", f"{'；'.join(j['paths']) or chain} → {j['name']}", '路径每一环都能说清；只落在自选股上；影响大小未知时不编数字', '已运行 · 规则计算' if auto else '人工整理'),
-        ('给出可验证的判断', f"基准价：{md(j['baseDate'])} 收盘 {j['base']}；幅度 {j['thr']:+g}%，期限 {j['n']} 个交易日", f"{j['text']}。失效条件：{j['invalid']}", '有明确价格、期限和失效条件；基准价早于发出日', '已运行 · 幅度与期限为人工设定'),
-        ('到期对答案', f"{j['name']} {md(j['issued'])} 起 {j['n']} 个交易日的真实收盘价", outcome(j), f"判定：{STATUS[j['status']]}", '已运行 · 真实收盘价结算' if done else '未到期'),
-        ('复盘与经验', '判断、实际走势、同期其他事件', f"原因：{j['review']['why']} 漏看：{j['review']['missed']} 经验：{j['review']['lesson']}" if j['review'] else '还没有结果，暂不复盘。', '说对说错都要有原因和一条经验；经验由用户决定记不记进长期记忆', '人工整理 · 未调用模型' if j['review'] else '未运行'),
-    ]
-    for n, (stage, inp, out, chk, st) in enumerate(steps, 1):
-        rows.append([t, j['event'] if n == 1 else '', f"{t}-S{n}", stage, inp, out, chk, st]); fills.append((7, j['status']) if n == 4 else None)
-sheet('评测步骤', 'Agent 评测步骤 · 输入、输出与检查点', f'{len(jus)} 条判断 × 5 步 = {len(rows)} 步 | 版式沿用原表「评测事件」| 运行状态如实标注：哪些是规则算的，哪些是人工整理的',
-      ['Trace ID', '事件', '步骤ID', '步骤 / 阶段', '输入', '管家输出 / 实际结果', '评测检查点', '运行状态'], rows, [9, 34, 11, 20, 60, 80, 54, 28], 'E6', fills)
+    far = f"窗口内收盘最{'高' if j['up'] else '低'} {sg(j['worst'])}" if j['worst'] is not None else '还没有收盘数据'
+    if j['status'] == 'hit': return f"{md(j['settledOn'])} 收盘{'涨过' if j['up'] else '跌破'} {j['line']}（第 {j['elapsed']} 个交易日），{far}"
+    if j['status'] == 'miss': return f"{j['n']} 个交易日走完没有{'涨过' if j['up'] else '跌破'}，{far}"
+    if j['status'] == 'void': return f"{md(j['settledOn'])} 失效条件触发：{j['voidOn']['text'] if j['voidOn'] else ''}"
+    return f"已过 {j['elapsed']} / {j['n']} 个交易日，{far}"
+rows = [[f"T{n:02d}", j['issued'], j['signal'], j['event'], j['text'], outcome(j), STATUS[j['status']], (j['review'] or {}).get('why', ''), (j['review'] or {}).get('lesson', '')] for n, j in enumerate(jus, 1)]
+sheet('评测事件', '评测事件 · 捕捉得准不准', f'{len(jus)} 条可验证的判断 | 有结果的 {len(settled)} 条：说对 {hit}、说错 {len(settled) - hit} | 用真实收盘价结算，截至 {md(AS_OF)} | 样本小，幅度和期限为事后选定',
+      ['编号', '发出日', '信号', '事件', '管家的判断（有价格、有期限）', '实际结果', '判定', '为什么对 / 错', '记下的经验'],
+      rows, [7, 12, 8, 42, 52, 50, 10, 48, 48], 'E6', [(7, j['status']) for j in jus])
 
 wb.move_sheet('说明', -(len(wb.sheetnames) - 1))
 wb.save(sys.argv[2])
-print('已写入', sys.argv[2], {ws.title: ws.max_row - 5 for ws in wb if ws.title != '说明'})
+print('已写入', sys.argv[2], wb.sheetnames)
