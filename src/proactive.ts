@@ -25,7 +25,7 @@ export function nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, re
   if (todo.length) out.push({ id: 'review', text: `${todo.length} 条判断出了结果，还没复盘。`, action: { label: '开始复盘', review: todo[0].id } })
 
   // 持仓股被说中了：事后应对（合成一条）
-  const heldHit = recent.filter((j) => j.status === 'hit' && (holdings[j.code] ?? 0) > 0)
+  const heldHit = recent.filter((j) => j.status === 'hit' && !j.up && (holdings[j.code] ?? 0) > 0)
   if (heldHit.length) out.push({ id: 'held-hit', text: `你持有的${[...new Set(heldHit.map((j) => stockOf(j.code).name))].join('、')}已跌破管家说的价格。`, action: { label: '看做法', review: heldHit[0].id } })
   // 我表过态的判断有结果了（合成一条，细节在下面的「有结果了」里）
   const mine = recent.map((j) => ({ j, r: myResult(j, votes[j.id]) })).filter((x) => x.r != null)

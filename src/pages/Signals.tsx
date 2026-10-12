@@ -88,7 +88,8 @@ const PARAM: Record<NonNullable<SignalDef['param']>, { before: string; after: st
   ma: { before: '收盘价跌破', after: '日均线', options: [5, 10, 20] },
   turnover: { before: '换手率达到', after: '% 才算', min: 1, max: 20, step: 0.5 },
   streak: { before: '连续下跌', after: '天才算', min: 2, max: 6, step: 1 },
-  low: { before: '收盘价创近', after: '个交易日新低', options: [10, 20, 60] },
+  low: { before: '收盘价创近', after: '个交易日新低或新高', options: [10, 20, 60] },
+  cross: { before: '美股龙头单日涨跌幅达到', after: '% 才提醒', min: 3, max: 12, step: 0.5 },
 }
 
 /** 判断逻辑：一句带着可调数字的话 + 开关。改动立即生效，评测跟着重算 */
@@ -123,7 +124,7 @@ function Logic({ s }: { s: SignalDef }) {
         </div>
       ) : s.kind === 'event' ? <p className="mt-2 text-[13px] text-steel">这类信号由人工整理的事件触发，没有可调的阈值。</p> : null}
       {s.id === 'turnover' && !HAS_TURNOVER ? <p className="mt-2 text-[13px] text-warning">这次没有取到换手率数据，这个信号暂时不会触发。</p> : null}
-      {base?.kind === 'rule' ? <p className="mt-2 text-[13px] text-steel">默认设置（{DEFAULT_RULES[key!]}）下触发 {base.n} 次，其中 {base.cont} 次续跌；你的设置见右侧评测。</p> : null}
+      {base?.kind === 'rule' ? <p className="mt-2 text-[13px] text-steel">默认设置（{DEFAULT_RULES[key!]}）下触发 {base.n} 次，其中 {base.cont} 次之后延续；你的设置见右侧评测。</p> : null}
       {s.kind === 'planned' ? null : (
         <label className="mt-3 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={!off} onChange={toggle} className="h-4 w-4 accent-[var(--primary)]" />
@@ -143,7 +144,7 @@ function Advice({ s }: { s: SignalDef }) {
   return (
     <div className="mt-5 rounded-lg bg-tint-lavender px-4 py-3 text-sm text-on-lavender">
       <p className="font-semibold">管家的建议</p>
-      <p className="mt-1">我试了几个阈值：现在是 {t.from}，触发 {t.now.n} 次，其中 {pctOf(t.now.rate)} 之后又跌了 5% 以上；改成 {t.to} 的话，触发 {t.then.n} 次，这个比例是 {pctOf(t.then.rate)}。样本不多，仅供参考。</p>
+      <p className="mt-1">我试了几个阈值：现在是 {t.from}，触发 {t.now.n} 次，其中 {pctOf(t.now.rate)} 之后同方向又走了 5% 以上；改成 {t.to} 的话，触发 {t.then.n} 次，这个比例是 {pctOf(t.then.rate)}。样本不多，仅供参考。</p>
       <Button size="xs" variant="dark" className="mt-2" onClick={() => setRules({ ...rules, [t.param]: t.to } as Rules, `采纳管家建议：「${s.name}」的阈值从 ${t.from} 改为 ${t.to}`)}>改成 {t.to}</Button>
     </div>
   )
@@ -174,7 +175,7 @@ function Detail({ s, e, onBack }: { s: SignalDef; e: SignalEval; onBack?: () => 
           {!e ? <p className="text-sm text-steel">{s.kind === 'planned' ? '数据接入后才有评测。' : '只提醒、不出判断，没有可对答案的样本。'}</p> : e.kind === 'rule' ? (
             <>
               <Stat label="回测触发" value={`${e.n} 次`} />
-              <Stat label="之后 5 日内又跌 5% 以上" value={e.n ? `${e.cont} 次（${Math.round((e.cont / e.n) * 100)}%）` : '—'} />
+              <Stat label={`之后 5 日内${s.dir === 'down' ? '又跌' : s.dir === 'up' ? '又涨' : '同方向再走'} 5% 以上`} value={e.n ? `${e.cont} 次（${Math.round((e.cont / e.n) * 100)}%）` : '—'} />
               <Stat label="触发后 5 日平均涨跌" value={e.n ? <span className={signClass(e.avg5)}>{signed(e.avg5)}%</span> : '—'} />
               <p className="mt-2 text-xs text-steel">在 8 只自选股 2025 年以来的日线上回测。样本小，只能看倾向。</p>
             </>
@@ -202,11 +203,11 @@ function Detail({ s, e, onBack }: { s: SignalDef; e: SignalEval; onBack?: () => 
         <Block title={`回测样本 · ${e.n} 个`} className="mt-5" flush>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[440px] border-collapse text-[13px]">
-              <thead><tr className="text-left text-xs text-steel [&>th]:whitespace-nowrap [&>th]:px-4 [&>th]:py-2 [&>th]:font-medium"><th>股票</th><th>触发日</th><th className="text-right">当日涨跌</th><th className="text-right">之后 5 日最低</th><th className="text-right">5 日后</th></tr></thead>
+              <thead><tr className="text-left text-xs text-steel [&>th]:whitespace-nowrap [&>th]:px-4 [&>th]:py-2 [&>th]:font-medium"><th>股票</th><th>触发日</th><th className="text-right">当日涨跌</th><th className="text-right">{s.dir === 'down' ? '之后 5 日最低' : s.dir === 'up' ? '之后 5 日最高' : '之后 5 日同方向最远'}</th><th className="text-right">5 日后</th></tr></thead>
               <tbody className="[&_td]:border-t [&_td]:border-hairline-soft [&_td]:px-4 [&_td]:py-1.5 [&_td]:tabular-nums">
                 {e.samples.map((x) => (
                   <tr key={x.code + x.d}><td>{stockOf(x.code).name}</td><td>{fmtDate(x.d)}</td>
-                    <td className={cn('text-right', signClass(x.p))}>{signed(x.p)}%</td><td className={cn('text-right', signClass(x.fwdMin))}>{signed(x.fwdMin)}%</td><td className={cn('text-right', signClass(x.fwd5))}>{signed(x.fwd5)}%</td></tr>
+                    <td className={cn('text-right', signClass(x.p))}>{signed(x.p)}%</td><td className={cn('text-right', signClass(x.ext))}>{signed(x.ext)}%</td><td className={cn('text-right', signClass(x.fwd5))}>{signed(x.fwd5)}%</td></tr>
                 ))}
               </tbody>
             </table>

@@ -90,7 +90,7 @@ type Store = Saved & {
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
-const KEY = 'anomaly-butler:v8'
+const KEY = 'anomaly-butler:v9'
 /** 演示预置：三条较早的判断已经复盘过，管家的经验已记进长期记忆。只在与实际结算结果一致时预置。 */
 const SEED_REVIEWED = ['j-xm-place', 'j-nv-energy', 'j-xm-su7']
 function fresh(tick: string): Saved {
@@ -104,7 +104,11 @@ function fresh(tick: string): Saved {
   }
 }
 function load(tick: string): Saved {
-  try { return { ...fresh(tick), ...JSON.parse(localStorage.getItem(KEY) ?? '{}') } } catch { return fresh(tick) }
+  try {
+    const base = fresh(tick), got = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Saved>
+    // 新加的设置项用默认值补上
+    return { ...base, ...got, rules: { ...base.rules, ...got.rules }, agent: { ...base.agent, ...got.agent, notify: { ...base.agent.notify, ...got.agent?.notify } }, profile: { ...base.profile, ...got.profile } }
+  } catch { return fresh(tick) }
 }
 const pageFromHash = (): Page => {
   const h = location.hash.replace('#/', '') as Page

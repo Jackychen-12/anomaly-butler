@@ -1,15 +1,16 @@
 /**
- * 今日：先用图看全局（自选变化、板块变化），再分「宏观」和「微观」看今天的事。
- * 宏观是政策和跨市场的事，画出传导路径；微观是公司自己的事和行情指标。右边是提问栏，窄屏时收进底部输入条。
+ * 今日：先用图看全局（自选变化、板块变化），再分「宏观」和「微观」看管家捕捉到的异动——涨的和跌的都算。
+ * 宏观是政策和跨市场的事，画出传导路径，除了今天新出现的，也列出近几天还在起作用的；微观是公司自己的事和行情指标。
+ * 再往下是「提前看」（未来几天可能明显涨跌的自选股）和最近有结果的判断。右边是提问栏，窄屏时收进底部输入条。
  */
 import { useState, type ReactNode } from 'react'
 import { ChevronRight, MessageCircle } from 'lucide-react'
 import { AskPanel, useGo } from '../ask'
 import { DivergingBars, JudgmentMeter, type BarRow } from '../charts'
 import { STOCKS } from '../data/case'
-import { anomaliesAt, changeOver, fmtDate, isFresh, judgmentsAt, recentlySettled, sectorRows, signed, stockOf, weekday, whyLine, type Anomaly, type Judgment, type Level } from '../engine'
+import { anomaliesAt, changeOver, fmtDate, isFresh, judgmentsAt, recentlySettled, sectorRows, shiftDay, signed, stockOf, weekday, whyLine, type Anomaly, type Judgment, type Level } from '../engine'
 import { Button, cn, LevelTag, Stamp, Tag } from '../kit'
-import { scopeOf, SIGNALS } from '../data/signals'
+import { scopeOf, signalOf } from '../data/signals'
 import { PathTree, StockChip } from '../path'
 import { Sheet, useIsWide, WithRail } from '../layout'
 import { VoteButtons } from '../parts'
@@ -19,19 +20,23 @@ import { useStore } from '../store'
 
 export function TodayPage() {
   const st = useStore()
-  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent, rules } = st
+  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent } = st
   const go = useGo()
   const wide = useIsWide()
   const [sheet, setSheet] = useState(false)
 
-  const fresh = anomaliesAt(tick).filter((a) => isFresh(a, tick, prevTick))
-  const events = fresh.filter((a) => !a.auto)
-  const moves = fresh.filter((a) => a.auto)
-  const macro = events.filter((a) => scopeOf(a.signal) === '宏观')
-  const company = events.filter((a) => scopeOf(a.signal) === '微观')
+  const all = anomaliesAt(tick)
+  const fresh = all.filter((a) => isFresh(a, tick, prevTick))
+  // 宏观 = 政策与跨市场（包括自动识别的美股映射）；微观 = 公司事件 + 行情指标
+  const macro = fresh.filter((a) => scopeOf(a.signal) === '宏观')
+  const company = fresh.filter((a) => scopeOf(a.signal) === '微观' && !a.indicators)
+  const moves = fresh.filter((a) => !!a.indicators)
+  // 近几天出现、还在起作用的宏观事件（宏观的影响不会一天结束）
+  const since = shiftDay(tick, -4)
+  const recentMacro = all.filter((a) => scopeOf(a.signal) === '宏观' && !fresh.includes(a) && (a.tick ?? a.after!) >= since)
   const js = judgmentsAt(tick)
   const recent = recentlySettled(tick)
-  // 提前看：管家认为未来几天有下跌风险的自选股（还没到对答案那天的判断），今天新发出的排前面
+  // 提前看：管家认为未来几天会明显涨或跌的自选股（还没到对答案那天的判断），今天新发出的排前面
   const outlook = js.filter((j) => j.status === 'pending').sort((a, b) => (a.issued === b.issued ? (a.n - a.elapsed) - (b.n - b.elapsed) : a.issued < b.issued ? 1 : -1))
   // 管家主动想说的事：宽屏放进右侧对话栏的开场白里，窄屏放在主内容顶部
   const tips = nudges({ tick, prevTick, votes, prefs, holdings, hasHoldings, reviewState, profile, agent }).slice(0, wide ? 3 : 2)
@@ -44,15 +49,11 @@ export function TodayPage() {
   const microCount = company.length + moves.length
   const count = macro.length + microCount
   const need = major(fresh).length
-  // 捕捉：宏观和微观各盯着几类信号，今天各捕捉到多少个原始异常信号（一只股票一天触发几个指标就算几个）
-  const liveOf = (scope: '宏观' | '微观') => SIGNALS.filter((x) => x.kind !== 'planned' && !rules.off.includes(x.id) && scopeOf(x.id) === scope).length
-  const rawMicro = company.length + moves.reduce((n, a) => n + (a.indicators?.length ?? 1), 0)
-  const raw = macro.length + rawMicro
   // 每只股票今天最高的异动等级，用来在图上打点
   const dotOf = (code: string): Level | null => fresh.filter((a) => a.hits.includes(code)).map((a) => gradeOf(a, code)).sort((x, y) => y.score - x.score)[0]?.level ?? null
 
   const headline = count
-    ? `早上好。今天从宏观政策和微观指标里捕捉到 ${raw} 个异常信号，合并、分级后有 ${need} 件事需要你看，排在左边了。`
+    ? `早上好。今天捕捉到 ${count} 条异动（宏观 ${macro.length}，微观 ${microCount}），其中 ${need} 条需要你看，排在左边了。`
     : '早上好。今天自选股上很平静，没有新的事需要你看。'
   const rail = wide ? <AskPanel tips={tips} headline={headline} /> : null
 
@@ -63,12 +64,8 @@ export function TodayPage() {
           <p className="text-[13px] text-steel">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
           <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{need ? `今天有 ${need} 件事需要你看` : count ? '今天没有需要你特别留意的事' : '今天没有新的事需要你看'}</h1>
 
-          <Capture stocks={STOCKS.length} macro={{ kinds: liveOf('宏观'), raw: macro.length }} micro={{ kinds: liveOf('微观'), raw: rawMicro }} items={count} need={need} />
           <Overview dotOf={dotOf} />
 
-          <Section title="提前看" sub="管家认为未来几天有下跌风险的自选股" count={outlook.length}>
-            {outlook.length ? <Rows list={outlook} /> : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">目前没有。管家发现风险时会先在这里列出来。</p>}
-          </Section>
 
           {tips.length && !wide ? (
             <ul className="mt-4 overflow-hidden rounded-lg bg-tint-lavender text-on-lavender" aria-label="管家想提醒你">
@@ -81,11 +78,17 @@ export function TodayPage() {
             </ul>
           ) : null}
 
-          <Section title="宏观" sub="政策与跨市场的事，以及它怎么传到你的自选" count={macro.length}>
-            {macro.length ? (
+          <Section title="宏观" sub="政策与跨市场的事，以及它怎么传到你的自选" count={macro.length + recentMacro.length}>
+            {macro.length + recentMacro.length ? (
               <div className="flex flex-col gap-3">
                 {major(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}
                 <Minor n={minor(macro).length}>{minor(macro).map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} />)}</Minor>
+                {recentMacro.length ? (
+                  <>
+                    <p className="mt-1 text-[13px] text-steel">近几天出现、还在起作用的</p>
+                    {recentMacro.map((a) => <EventCard key={a.id} a={a} level={levelOf(a).level} judgments={js.filter((j) => j.anomaly.id === a.id)} compact />)}
+                  </>
+                ) : null}
               </div>
             ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的宏观事件。</p>}
           </Section>
@@ -102,6 +105,9 @@ export function TodayPage() {
             ) : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">今天没有新的公司事件或指标异动。</p>}
           </Section>
 
+          <Section title="提前看" sub="管家认为未来几天会明显涨或跌的自选股" count={outlook.length}>
+            {outlook.length ? <Rows list={outlook} /> : <p className="rounded-lg bg-surface-soft px-4 py-4 text-sm text-steel">目前没有。管家有看法时会先在这里列出来。</p>}
+          </Section>
           {recent.length ? (
             <Section title="最近有结果" action={<Button size="xs" variant="ghost" onClick={() => st.setPage('review')}>全部 →</Button>}><Rows list={recent.slice(0, 5)} /></Section>
           ) : null}
@@ -117,42 +123,6 @@ export function TodayPage() {
       </WithRail>
       {sheet && !wide ? <Sheet title="问管家" tall onClose={() => setSheet(false)}><AskPanel bare autoFocus onNavigate={() => setSheet(false)} /></Sheet> : null}
     </>
-  )
-}
-
-/**
- * 捕捉与信噪比：左边是管家从两个来源捕捉到的异常信号——宏观政策、微观指标，各盯几类、今天捕捉到几个，
- * 一个圆点代表一个原始信号；右边是合并、分级之后需要你看的几件事。数字都是按当前规则算出来的。
- */
-function Capture({ stocks, macro, micro, items, need }: { stocks: number; macro: { kinds: number; raw: number }; micro: { kinds: number; raw: number }; items: number; need: number }) {
-  const raw = macro.raw + micro.raw
-  const Source = ({ name, scope, n }: { name: string; scope: string; n: number }) => (
-    <div className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-x-3 py-1">
-      <span className="text-[13px] font-medium text-ink">{name}</span>
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 text-xs text-steel">{scope}</span>
-        <span className="flex min-w-0 flex-wrap gap-1" aria-hidden="true">{Array.from({ length: Math.min(n, 24) }, (_, i) => <span key={i} className="h-2 w-2 rounded-full bg-ink" />)}</span>
-      </span>
-      <span className="text-[13px] tabular-nums text-ink"><b className="font-semibold">{n}</b> 个</span>
-    </div>
-  )
-  return (
-    <section className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-2 rounded-lg bg-surface px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-      aria-label={`今天捕捉到 ${raw} 个异常信号：宏观政策 ${macro.raw} 个，微观指标 ${micro.raw} 个；合并、分级后 ${need} 件需要你看`}>
-      <div className="min-w-0">
-        <p className="mb-0.5 text-xs text-steel">今天捕捉到的异常信号</p>
-        <Source name="宏观政策" scope={`盯 ${macro.kinds} 类`} n={macro.raw} />
-        <Source name="微观指标" scope={`盯 ${micro.kinds} 类 × ${stocks} 只`} n={micro.raw} />
-      </div>
-      <div className="flex items-center gap-3 border-t border-hairline pt-2 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-        <ChevronRight className="hidden h-4 w-4 shrink-0 text-stone sm:block" aria-hidden="true" />
-        <div>
-          <p className="text-xs text-steel">合并、分级后</p>
-          <p className="mt-0.5 leading-none"><b className="text-[26px] font-semibold tracking-tight">{need}</b><span className="ml-1 text-[13px]">件需要你看</span></p>
-          <p className="mt-1 text-xs text-steel">{raw} 个信号 → {items} 件事{items - need > 0 ? `，${items - need} 件轻微已收起` : ''}</p>
-        </div>
-      </div>
-    </section>
   )
 }
 
@@ -254,9 +224,24 @@ function Rows({ list }: { list: Judgment[] }) {
 }
 
 /** 一件事一张卡：标题、传导路径图（事件 → 途径 → 你的自选股）、管家的判断和进度。其余文字放进判断页的五步里 */
-function EventCard({ a, level, judgments }: { a: Anomaly; level: Level; judgments: Judgment[] }) {
+function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level; judgments: Judgment[]; compact?: boolean }) {
   const { openStock, openReview, profile } = useStore()
+  const [open, setOpen] = useState(!compact)
   const relief = a.tone === 'relief'
+  if (!open) {
+    // 近几天的事：先收成一行，标题 + 管家的判断走到哪了
+    const j = judgments[0]
+    return (
+      <article className="rounded-lg border border-hairline">
+        <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2.5 text-left hover:bg-surface-soft">
+          <LevelTag level={level} />{relief ? <Tag tone="green">好消息</Tag> : null}
+          <span className="order-last min-w-0 basis-full text-sm font-medium sm:order-none sm:flex-1 sm:basis-0 sm:truncate">{a.title}</span>
+          <span className="ml-auto shrink-0 text-xs text-steel sm:ml-0">{j ? `${stockOf(j.code).name} ${j.up ? '看涨' : '看跌'} · ${j.status === 'pending' ? '在等结果' : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}` : a.when}</span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-stone" />
+        </button>
+      </article>
+    )
+  }
   return (
     <article className="rounded-lg border border-hairline">
       <div className="px-3.5 pb-3 pt-3">
@@ -282,7 +267,7 @@ function EventCard({ a, level, judgments }: { a: Anomaly; level: Level; judgment
       })}
       {judgments.length ? null : (
         <p className="flex flex-wrap items-center gap-x-3 border-t border-hairline-soft px-3.5 py-2.5 text-[13px] text-steel">
-          <span>{relief ? '好消息，只提醒、不做判断。' : '影响还不明确，先记下、不做判断。'}</span>
+          <span>{signalOf(a.signal)?.judges === false ? '这类信号只提醒，不做判断。' : relief ? '好消息，只提醒、不做判断。' : '影响还不明确，先记下、不做判断。'}</span>
           <button type="button" onClick={() => openStock(a.hits[0])} className="text-link hover:underline">看证据 →</button>
         </p>
       )}

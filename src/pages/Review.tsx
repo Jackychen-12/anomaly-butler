@@ -140,7 +140,9 @@ function SayBox({ placeholder, onSay }: { placeholder: string; onSay: (text: str
 function Outcome({ j }: { j: Judgment }) {
   const { votes, reasons, reviewState, decide } = useStore()
   const v = votes[j.id], mine = myResult(j, v), why = reasonLabel(v, reasons[j.id]), state = reviewState[j.id]
-  const said = Math.abs(j.thr), actual = Math.max(0, -(j.worst ?? 0))
+  // 朝判断方向实际走了多远（走反了记 0）
+  const said = Math.abs(j.thr), actual = Math.max(0, (j.up ? 1 : -1) * (j.worst ?? 0))
+  const dir = j.up ? '涨' : '跌'
   const max = Math.max(said, actual, 1)
   const Bar = ({ label, value, tone, text }: { label: string; value: number; tone: string; text: string }) => (
     <div className="grid grid-cols-[104px_minmax(0,1fr)_auto] items-center gap-3 py-1 text-[13px]">
@@ -152,9 +154,9 @@ function Outcome({ j }: { j: Judgment }) {
   return (
     <div>
       {j.status === 'void' ? <p className="rounded-md bg-surface px-3 py-2 text-sm text-charcoal">这条作废了，不算对也不算错。{j.voidOn?.text}。</p> : (
-        <div className="rounded-lg border border-hairline px-3.5 py-2.5" role="img" aria-label={`管家说会跌超过 ${said}%，实际最多跌了 ${actual.toFixed(2)}%`}>
-          <Bar label="管家说会跌超过" value={said} tone="bg-stone" text={`${said}%`} />
-          <Bar label={j.status === 'hit' ? '跌破当天跌到' : `${j.n} 天里最多跌了`} value={actual} tone={j.status === 'hit' ? 'bg-down' : 'bg-ink'} text={(j.worst ?? 0) > 0 ? `没跌，涨了 ${signed(j.worst ?? 0)}%` : `${actual.toFixed(2)}%`} />
+        <div className="rounded-lg border border-hairline px-3.5 py-2.5" role="img" aria-label={`管家说会${dir}超过 ${said}%，实际最多${dir}了 ${actual.toFixed(2)}%`}>
+          <Bar label={`管家说会${dir}超过`} value={said} tone="bg-stone" text={`${said}%`} />
+          <Bar label={j.status === 'hit' ? `到价当天${dir}到` : `${j.n} 天里最多${dir}了`} value={actual} tone={j.status === 'hit' ? (j.up ? 'bg-up' : 'bg-down') : 'bg-ink'} text={actual === 0 ? `没${dir}，${j.up ? '跌' : '涨'}了 ${signed(j.worst ?? 0)}%` : `${actual.toFixed(2)}%`} />
         </div>
       )}
       <div className="mt-2.5 grid grid-cols-2 gap-2.5">
@@ -255,7 +257,7 @@ function Flow({ j, onBack }: { j: Judgment; onBack?: () => void }) {
 
         <Step n={4} title="你打算怎么做" muted={!held}>
           {held && (pending || j.status === 'hit') ? <Planner j={j} />
-            : held ? <p className="text-sm text-steel">这条已经有结果，价格没有跌破，不需要再做什么。</p>
+            : held ? <p className="text-sm text-steel">这条已经有结果，价格没有到管家说的位置，不需要再做什么。</p>
             : <p className="text-sm text-steel">你{hasHoldings ? `没有持有${stockOf(j.code).name}，不需要动作。` : '还没有填持仓。'}{hasHoldings ? null : <button type="button" onClick={() => openMe('holdings')} className="ml-1 text-link hover:underline">填上持仓，看几种做法 →</button>}</p>}
         </Step>
 

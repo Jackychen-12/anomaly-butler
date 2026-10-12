@@ -68,7 +68,7 @@ function Holdings() {
                           className="h-8 w-14 rounded-sm border border-hairline-strong bg-canvas px-2 text-right text-sm tabular-nums outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                         <span className="text-steel">%</span></label>
                     </td>
-                    <td className="text-[13px] text-slate">{tj ? <span className="flex flex-wrap items-center gap-1.5">{hasHoldings ? <LevelTag level={gradeOf(tj.anomaly, s.code).level} /> : null}{tj.status === 'hit' ? '已跌破管家说的价格' : '有一条在等结果'}</span> : <span className="text-stone">—</span>}</td>
+                    <td className="text-[13px] text-slate">{tj ? <span className="flex flex-wrap items-center gap-1.5">{hasHoldings ? <LevelTag level={gradeOf(tj.anomaly, s.code).level} /> : null}{tj.status === 'hit' ? (tj.up ? '已涨过管家说的价格' : '已跌破管家说的价格') : tj.up ? '管家看涨，在等结果' : '管家看跌，在等结果'}</span> : <span className="text-stone">—</span>}</td>
                   </tr>
                 )
               })}

@@ -58,23 +58,26 @@ export function DivergingBars({ rows, labelWidth = 84 }: { rows: BarRow[]; label
 }
 
 /**
- * 判断进度条：从发出判断时的价格（左）到「跌破就算说对」的那个价格（右），现在走了多远。
- * 走满即说对。价格反而上涨时进度为 0。
+ * 判断进度条：从发出判断时的价格（左）到「到了就算说对」的那个价格（右），现在走了多远。
+ * 看跌的判断是往下走到跌破线，看涨的是往上走到涨过线；走满即说对，走反了进度为 0。
  */
 export function JudgmentMeter({ j, className }: { j: Judgment; className?: string }) {
   const frac = (pct: number | null) => (pct == null ? 0 : Math.max(0, Math.min(1, pct / j.thr)))
   const p = j.status === 'hit' ? 1 : j.status === 'miss' ? frac(j.worst) : frac(j.latest)
-  const text = j.status === 'hit' ? '已跌破' : j.status === 'void' ? '作废'
-    : j.status === 'miss' ? `到期没跌破，最多走到 ${Math.round(p * 100)}%`
-    : j.latest == null ? '今天开盘后开始计' : j.latest > 0 ? `反而涨了 ${signed(j.latest)}%` : `已走 ${Math.round(p * 100)}%`
-  const tone = j.status === 'hit' ? ['bg-tint-rose', 'bg-up'] : j.status === 'pending' ? ['bg-tint-peach', 'bg-warning'] : ['bg-tint-gray', 'bg-stone']
+  const against = j.latest != null && (j.up ? j.latest < 0 : j.latest > 0)
+  const text = j.status === 'hit' ? (j.up ? '已涨过' : '已跌破') : j.status === 'void' ? '作废'
+    : j.status === 'miss' ? `到期没到，最多走到 ${Math.round(p * 100)}%`
+    : j.latest == null ? '今天开盘后开始计' : against ? `反而${j.up ? '跌' : '涨'}了 ${signed(j.latest)}%` : `已走 ${Math.round(p * 100)}%`
+  // 条的颜色跟着方向：看涨用红，看跌用绿（A 股习惯），等结果时用浅一档
+  const tone = j.status === 'miss' || j.status === 'void' ? ['bg-tint-gray', 'bg-stone'] : j.up ? ['bg-tint-rose', 'bg-up'] : ['bg-tint-mint', 'bg-down']
+  const name = j.up ? '涨过线' : '跌破线'
   return (
-    <div className={cn('min-w-0', className)} title={j.latest == null ? undefined : `目前相对起点 ${signed(j.latest)}%，最低到过 ${signed(j.worst ?? 0)}%`}>
-      <div className="flex items-baseline justify-between gap-2 text-[11px] text-steel"><span>离跌破线</span><span className="font-medium text-ink">{text}</span></div>
-      <div className={cn('mt-1 h-2 overflow-hidden rounded-r-[4px]', tone[0])} role="img" aria-label={`从 ${j.base} 到跌破线 ${j.line.toFixed(2)}：${text}`}>
-        <div className={cn('h-full rounded-r-[4px]', tone[1])} style={{ width: `${p * 100}%` }} />
+    <div className={cn('min-w-0', className)} title={j.latest == null ? undefined : `目前相对起点 ${signed(j.latest)}%，${j.up ? '最高' : '最低'}到过 ${signed(j.worst ?? 0)}%`}>
+      <div className="flex items-baseline justify-between gap-2 text-[11px] text-steel"><span>{j.up ? '▲ 看涨' : '▼ 看跌'} · 离{name}</span><span className="font-medium text-ink">{text}</span></div>
+      <div className={cn('mt-1 h-2 overflow-hidden rounded-r-[4px]', tone[0])} role="img" aria-label={`从 ${j.base} 到${name} ${j.line.toFixed(2)}：${text}`}>
+        <div className={cn('h-full rounded-r-[4px]', tone[1], j.status === 'pending' && 'opacity-60')} style={{ width: `${p * 100}%` }} />
       </div>
-      <div className="mt-1 flex justify-between text-[11px] tabular-nums text-stone"><span>起点 {j.base}</span><span>跌破线 {j.line.toFixed(2)}</span></div>
+      <div className="mt-1 flex justify-between text-[11px] tabular-nums text-stone"><span>起点 {j.base}</span><span>{name} {j.line.toFixed(2)}</span></div>
     </div>
   )
 }
