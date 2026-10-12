@@ -1,10 +1,10 @@
-/** 自选页：左边的行情列表按今天的重要程度分组（重要、留意、轻微、平静），异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
+/** 自选页（按股票看：发生了什么、我的仓位怎么办；表态和对答案在判断页）：左边的行情列表按今天的重要程度分组（重要、留意、轻微、平静），异动标在命中的那一行上；右边是选中股票的走势、异动和管家的判断。手机先列表、点开看详情。 */
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import { MARKET_LABEL, STOCKS, type Market, type Stock } from '../data/case'
 import { anomaliesOf, fmtDate, isFresh, judgmentsOf, type Level, lastBar, stockOf, type Anomaly, type Grade, type Judgment } from '../engine'
 import { Button, cn, Dot, LevelDot, LevelTag, PctPill, Tag } from '../kit'
-import { AnomalyBody, GradeBox, JudgmentCard, PriceChart } from '../parts'
+import { AnomalyBody, GradeBox, PriceChart } from '../parts'
 import { Split, useIsDesktop } from '../layout'
 import { Planner } from '../planner'
 import { scopeOf } from '../data/signals'
@@ -43,6 +43,7 @@ export function WatchPage() {
     <>
       <div className="px-4 pb-1 pt-4">
         <h1 className="text-lg font-semibold tracking-tight">自选</h1>
+        <p className="mt-0.5 text-[13px] text-steel">按股票看：发生了什么，我的仓位怎么办。</p>
       </div>
       <div className="flex items-center gap-0.5 px-3 pb-1.5 pt-1.5">
         {(['all', 'A', 'HK', 'US'] as Filter[]).map((f) => (
@@ -131,7 +132,6 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
   const open = anomalies.find((a) => a.id === openId) ?? anomalies[0]
   // 选中的这条异动里，管家针对这只股票的判断（可能没有：判断落在别的股票上，或者这条异动不出判断）
   const focus = judgments.find((j) => j.anomaly.id === open?.id)
-  const others = judgments.filter((j) => j.id !== focus?.id)
   const elsewhere = open ? open.judgments.filter((d) => d.code !== code).map((d) => stockOf(d.code).name) : []
   // 列表：新出现的放最上面（按重要程度排），之前的按日期分组，只先列最近三天
   const shown = anomalies.filter((a) => scope === 'all' || scopeOf(a.signal) === scope)
@@ -218,40 +218,38 @@ function Detail({ code, onBack }: { code: string; onBack?: () => void }) {
             <GradeBox a={open} code={code} />
           </>
         ) : null}
-        <p className="eyebrow mb-2 mt-5">管家怎么看</p>
-        {focus ? <JudgmentCard j={focus} /> : (
-          <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-4 text-[13px] text-steel">
+        <p className="eyebrow mb-2 mt-5">管家对它的判断{judgments.length ? ` · ${judgments.length} 条` : ''}</p>
+        {judgments.length ? (
+          <ul className="overflow-hidden rounded-lg border border-hairline bg-canvas">
+            {judgments.map((j) => (
+              <li key={j.id} className="border-b border-hairline-soft last:border-b-0">
+                <button type="button" onClick={() => openReview(j.id)} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-surface-soft">
+                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{j.up ? '看涨' : '看跌'} · {j.n} 个交易日内{j.up ? '涨过' : '跌破'} {j.line.toFixed(2)}</span><span className="block truncate text-xs text-steel">{j.anomaly.title}</span></span>
+                  <span className={cn('shrink-0 text-xs', j.status === 'pending' ? 'text-on-lavender' : 'text-steel')}>{j.status === 'pending' ? `${j.n - j.elapsed} 个交易日后对答案` : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}</span>
+                  <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-stone" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-[13px] text-steel">
             {open?.tone === 'relief' ? '这是缓解风险的消息，管家只提醒，不做涨跌判断。'
               : elsewhere.length ? `这件事上，管家的判断落在${elsewhere.join('、')}上，没有单独对${s.name}做判断。`
               : '影响还不够明确，管家先记下来，不做判断。'}
           </p>
         )}
-        {others.length ? (
-          <>
-            <p className="eyebrow mb-2 mt-5">这只股票的其他判断 · {others.length} 条</p>
-            <ul className="overflow-hidden rounded-lg border border-hairline bg-canvas">
-              {others.map((j) => (
-                <li key={j.id} className="border-b border-hairline-soft last:border-b-0">
-                  <button type="button" onClick={() => openReview(j.id)} className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[13px] hover:bg-surface-soft">
-                    <span className="min-w-0 flex-1 truncate">{j.anomaly.title}</span>
-                    <span className="shrink-0 text-xs text-steel">{j.status === 'pending' ? `${j.n - j.elapsed} 个交易日后对答案` : j.status === 'hit' ? '说对' : j.status === 'miss' ? '说错' : '作废'}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
+        {judgments.length ? <p className="mt-1.5 text-xs text-steel">表态、对答案和复盘在判断页做。</p> : null}
 
-        <p className="eyebrow mb-2 mt-5">和我的持仓有什么关系</p>
+        <p className="eyebrow mb-2 mt-5">我的仓位，现在怎么办</p>
         {!hasHoldings ? (
           <div className="rounded-lg border border-dashed border-hairline-strong p-3.5 text-[13px] text-slate">
-            你还没有告诉管家持有哪些股票。补充后，提醒会按你的仓位排序，并在这里给出调仓的几种做法。
+            你还没有告诉管家持有哪些股票。补充后，这里会列出几种做法和各自的代价。
             <div className="mt-2.5"><Button size="xs" variant="dark" onClick={() => openMe('holdings')}>补充持仓</Button></div>
           </div>
-        ) : !w ? <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-[13px] text-steel">你没有持有{s.name}，不需要调仓。</p> : (
+        ) : !w ? <p className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-[13px] text-steel">你没有持有{s.name}，不需要动。</p> : (
           <>
-            <p className="text-[13px] text-charcoal">{s.name}占你持仓的 <b className="font-semibold tabular-nums">{(w * 100).toFixed(0)}%</b>。{plan ? '下面是几种做法和各自的代价，决定由你做。' : '管家目前没有对它的判断在等结果或已经到价，不需要因为异动调仓。'}</p>
-            {plan ? <div className="[&>div]:bg-canvas"><Planner key={plan.id} j={plan} /></div> : null}
+            <p className="text-[13px] text-charcoal">{s.name}占你持仓的 <b className="font-semibold tabular-nums">{(w * 100).toFixed(0)}%</b>。{plan ? '在这里定做法：' : '管家目前没有对它的判断在等结果或已经到价，不需要因为异动去动它。'}</p>
+            {plan ? <Planner key={plan.id} j={plan} /> : null}
           </>
         )}
       </aside>

@@ -1,11 +1,9 @@
-/** 跨页面复用的业务组件：走势图、等级说明、异动正文、判断卡。 */
+/** 跨页面复用的业务组件：走势图、等级说明、异动正文、表态按钮。 */
 import type { ReactNode } from 'react'
-import { evalLine, fmtDate, gradeReason, knownBars, myResult, PREF_LABEL, relatedEvents, signed, signClass, stockOf, whyLine, type Anomaly, type Judgment, type Pref } from './engine'
+import { gradeReason, knownBars, PREF_LABEL, relatedEvents, stockOf, whyLine, type Anomaly, type Judgment, type Pref } from './engine'
 import type { Vote } from './data/case'
-import { signalOf } from './data/signals'
-import { Button, cn, LevelTag, Stamp, Tag } from './kit'
+import { Button, cn, LevelTag } from './kit'
 import { PathTree } from './path'
-import { priorLessons } from './review'
 import { useStore, VOTE_LABEL } from './store'
 
 /** 近 40 个交易日收盘价；标出异动发生日，以及「跌破就算管家说对」的那条价格线。 */
@@ -123,68 +121,6 @@ export function VoteButtons({ j }: { j: Judgment }) {
         <Button key={k} size="xs" variant={v === k ? 'primary' : k === 'watch' ? 'ghost' : 'secondary'} aria-pressed={v === k} onClick={() => vote(j.id, k, j.text, j.code)}>{VOTE_LABEL[k]}</Button>
       ))}
       <span className="text-xs text-steel">{v ? '记下了' : '到期一起对答案'}</span>
-    </div>
-  )
-}
-
-/** 判断卡：一条到期能对答案的判断 + 存根（倒计时或结果印章）+ 我的表态，并能进入和管家的复盘对话。 */
-export function JudgmentCard({ j, compact, onOpen }: { j: Judgment; compact?: boolean; onOpen?: () => void }) {
-  const { votes, tick, lessons, reviewState, openReview } = useStore()
-  const v = votes[j.id]
-  const mine = myResult(j, v)
-  const prior = priorLessons(j, lessons)
-  const state = reviewState[j.id]
-  const left = j.n - j.elapsed
-  const sig = signalOf(j.anomaly.signal)
-  return (
-    <div className="@container flex rounded-lg border border-hairline bg-canvas">
-      <div className="min-w-0 flex-1 p-3.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Tag>{sig?.name ?? j.anomaly.cat}</Tag>
-          <span className="text-xs text-steel">{fmtDate(j.issued)} 早上发出</span>
-        </div>
-        {onOpen
-          ? <button type="button" onClick={onOpen} className="mt-1.5 block text-left text-sm font-semibold hover:underline">{j.anomaly.title}</button>
-          : compact ? null : <p className="mt-1.5 text-sm font-semibold">{j.anomaly.title}</p>}
-        <p className={cn('mt-1.5', compact ? 'text-sm text-charcoal' : 'text-[15px] leading-relaxed text-ink')}><span className="text-steel">管家认为：</span>{j.text}。</p>
-        {compact ? null : (
-          <dl className="mt-2.5 grid gap-x-3 gap-y-0.5 text-[13px] text-charcoal @min-[440px]:grid-cols-[auto_1fr] @min-[440px]:gap-y-1 [&>dt]:mt-1.5 @min-[440px]:[&>dt]:mt-0">
-            <dt className="text-steel">什么情况下作废</dt><dd>{j.invalid}</dd>
-            <dt className="text-steel">哪天对答案</dt><dd className="tabular-nums">{j.dueDate ? `${fmtDate(j.dueDate)} 收盘后，或提前到价时` : '—'}</dd>
-            <dt className="text-steel">这类信号以往</dt><dd>{evalLine(j.anomaly.signal, tick)}</dd>
-            {prior.length ? <><dt className="text-steel">参考的经验</dt><dd>{prior.slice(0, 2).map((l) => l.text).join(' ')}{prior.length > 2 ? ` 等 ${prior.length} 条` : ''}</dd></> : null}
-          </dl>
-        )}
-        {j.latest != null ? (
-          <p className="mt-2 text-[13px] text-steel">
-            已过 {j.elapsed}/{j.n} 个交易日，目前 <span className={cn('tabular-nums', signClass(j.latest))}>{signed(j.latest)}%</span>
-            ，{j.up ? '最高' : '最低'}到过 <span className={cn('tabular-nums', signClass(j.worst!))}>{signed(j.worst!)}%</span>
-          </p>
-        ) : null}
-        {j.status === 'void' && j.voidOn ? <p className="mt-2 text-[13px] text-steel">{j.voidOn.text}</p> : null}
-        {j.status === 'pending' ? (
-          <div className="mt-3">
-            <VoteButtons j={j} />
-            <button type="button" onClick={() => openReview(j.id)} className="mt-2 block text-[13px] text-link hover:underline">想说说理由？和管家聊聊这条 →</button>
-          </div>
-        ) : (
-          <>
-            <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-steel">
-              <span>管家 <b className="font-medium text-ink">{j.status === 'hit' ? '✓ 说对了' : j.status === 'miss' ? '✗ 说错了' : '不计入'}</b></span>
-              <span>我 <b className="font-medium text-ink">{v ? VOTE_LABEL[v] : '没表态'}{mine == null ? '' : mine ? ' ✓' : ' ✗'}</b></span>
-            </div>
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <Button size="xs" variant={state ? 'secondary' : 'dark'} onClick={() => openReview(j.id)}>{state ? '看复盘对话' : '和管家复盘这条'} →</Button>
-              <span className="text-xs text-steel">{state === 'kept' ? '已复盘 · 经验已记进长期记忆' : state ? '已复盘' : '还没复盘：看看为什么，记下经验'}</span>
-            </div>
-          </>
-        )}
-      </div>
-      <div className="flex w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 border-l border-dashed border-hairline-strong px-1 text-center text-[11px] text-steel @min-[440px]:w-[84px]">
-        {j.status === 'pending'
-          ? <><b className="text-[22px] font-semibold leading-none tracking-tight text-ink tabular-nums">{left}</b><span>个交易日后<br />对答案</span></>
-          : <><Stamp status={j.status} /><span className="mt-1.5 tabular-nums">{fmtDate(j.settledOn!)}</span></>}
-      </div>
     </div>
   )
 }

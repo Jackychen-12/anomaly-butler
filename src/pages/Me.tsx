@@ -41,7 +41,7 @@ export function MePage() {
 
 // ── 持仓 ────────────────────────────────────────────────
 function Holdings() {
-  const { holdings, setHoldings, hasHoldings, tick, gradeOf, openReview } = useStore()
+  const { holdings, setHoldings, hasHoldings, tick, gradeOf, openStock } = useStore()
   const toDraft = (h: Record<string, number>) => Object.fromEntries(STOCKS.map((s) => [s.code, h[s.code] ? String(Math.round(h[s.code] * 100)) : '']))
   const [draft, setDraft] = useState<Record<string, string>>(() => toDraft(holdings))
   useEffect(() => setDraft(toDraft(holdings)), [holdings])
@@ -91,14 +91,14 @@ function Holdings() {
       </section>
 
       <section className="min-w-0 @min-[1000px]:mt-5">
-        <h2 className="text-base font-semibold">需要你看的判断</h2>
-        <p className="mt-0.5 text-[13px] text-steel">持仓股上管家有判断的，点开看做法。</p>
+        <h2 className="text-base font-semibold">需要你定做法的持仓</h2>
+        <p className="mt-0.5 text-[13px] text-steel">持仓股上管家有判断的，点开到自选里定做法。</p>
         {!hasHoldings ? <p className="mt-3 rounded-lg border border-dashed border-hairline-strong px-4 py-6 text-sm text-steel">填上持仓后，这里列出和你持仓有关的判断。</p>
           : targets.length === 0 ? <p className="mt-3 rounded-lg bg-surface-soft px-4 py-6 text-sm text-steel">目前没有。</p> : (
             <ul className="mt-3 overflow-hidden rounded-lg border border-hairline">
               {targets.map((t) => (
                 <li key={t.id} className="border-b border-hairline-soft last:border-b-0">
-                  <button type="button" onClick={() => openReview(t.id)} className="grid w-full grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-3.5 py-2.5 text-left hover:bg-surface-soft">
+                  <button type="button" onClick={() => openStock(t.code)} className="grid w-full grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-3.5 py-2.5 text-left hover:bg-surface-soft">
                     <span className="min-w-0"><span className="block truncate text-sm font-medium">{stockOf(t.code).name} <span className="font-normal text-steel">仓位 {Math.round((holdings[t.code] ?? 0) * 100)}%</span></span><span className="block truncate text-xs text-steel">{t.anomaly.title}</span></span>
                     <JudgmentMeter j={t} />
                   </button>

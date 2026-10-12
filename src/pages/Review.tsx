@@ -1,6 +1,7 @@
 /**
- * 判断：左边是全部判断，右边把一条判断按固定的五步走一遍——
- * 发生了什么（传导路径）→ 管家怎么看 → 你怎么看（落到哪一环）→ 你打算怎么做 → 对答案与复盘。
+ * 判断（按判断看：管家说得准不准，我看得对不对）：左边是全部判断，右边把一条判断按固定的四步走一遍——
+ * 发生了什么（传导路径）→ 管家怎么看 → 你怎么看（落到哪一环）→ 对答案与复盘。
+ * 仓位怎么办不在这里定（在自选的个股详情里），这里只在对答案时回头看记下的做法带来了什么。
  * 每条都按同一个顺序想，是为了帮用户养成成体系的思考习惯。
  */
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
@@ -12,7 +13,7 @@ import { Button, cn, Stamp, Tag } from '../kit'
 import { Split, useIsDesktop } from '../layout'
 import { PriceChart } from '../parts'
 import { PathTree } from '../path'
-import { Planner } from '../planner'
+import { choiceResult, planLabel } from '../planner'
 import { meaning } from '../profile'
 import { priorLessons, reasonLabel, REASONS, unreviewed } from '../review'
 import { useStore, VOTE_LABEL } from '../store'
@@ -41,6 +42,7 @@ export function ReviewPage() {
     <>
       <div className="border-b border-hairline px-4 pb-3 pt-4">
         <h1 className="text-lg font-semibold tracking-tight">判断</h1>
+        <p className="mt-0.5 text-[13px] text-steel">按判断看：管家说得准不准，我看得对不对。</p>
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
           <dt className="text-steel">管家</dt><dd className="tabular-nums"><b className="font-semibold">{sc.butler.hit}</b> 说对 · <b className="font-semibold">{sc.butler.miss}</b> 说错 · {sc.butler.void} 作废</dd>
           <dt className="text-steel">我</dt><dd className="tabular-nums"><b className="font-semibold">{sc.me.right}</b> 看对 · <b className="font-semibold">{sc.me.wrong}</b> 看错{sc.split.butler + sc.split.me ? ` · 意见不同时 管家 ${sc.split.butler}：我 ${sc.split.me}` : ''}</dd>
@@ -97,7 +99,7 @@ function Row({ j, selected, onPick }: { j: Judgment; selected: boolean; onPick: 
   )
 }
 
-/** 一步：序号 + 标题 + 内容，左边一条线把五步连起来。done 打勾，muted 表示还没到这一步 */
+/** 一步：序号 + 标题 + 内容，左边一条线把几步连起来。done 打勾，muted 表示还没到这一步 */
 function Step({ n, title, done, muted, last, children }: { n: number; title: string; done?: boolean; muted?: boolean; last?: boolean; children: ReactNode }) {
   return (
     <li className="relative pb-6 pl-10 last:pb-0">
@@ -186,9 +188,24 @@ function Outcome({ j }: { j: Judgment }) {
   )
 }
 
-/** 一条判断的五步。 */
+/** 回头看当时在自选里记下的做法：和不动相比，总资产多了还是少了 */
+function ChoiceLook({ j }: { j: Judgment }) {
+  const { plans, holdings } = useStore()
+  const c = plans[j.id], w = holdings[j.code] ?? 0
+  const r = c && w ? choiceResult(j, c, w) : null
+  if (!c || !r) return null
+  const name = stockOf(j.code).name, better = r.diff > 0.005, same = Math.abs(r.diff) <= 0.005
+  return (
+    <div className="mt-2.5 rounded-lg border border-hairline px-3.5 py-2.5">
+      <p className="text-xs text-steel">我当时的做法 · {planLabel(j, c.keep)}</p>
+      <p className="mt-0.5 text-sm text-charcoal">到出结果那天，{name}比当时{r.move < 0 ? '跌' : '涨'}了 {Math.abs(r.move).toFixed(2)}%。{same ? '这个做法和不动没有差别。' : <>和不动相比，总资产<b className="font-semibold">{better ? '多' : '少'}了 {Math.abs(r.diff).toFixed(2)} 个百分点</b>。</>}</p>
+    </div>
+  )
+}
+
+/** 一条判断的四步。 */
 function Flow({ j, onBack }: { j: Judgment; onBack?: () => void }) {
-  const { tick, votes, vote, reasons, setReason, dialog, reviewState, lessons, say, openStock, holdings, hasHoldings, openMe, profile } = useStore()
+  const { tick, votes, vote, reasons, setReason, dialog, reviewState, lessons, say, openStock, holdings, plans, profile } = useStore()
   const turns = dialog[j.id] ?? []
   const v = votes[j.id]
   const pending = j.status === 'pending'
@@ -253,18 +270,14 @@ function Flow({ j, onBack }: { j: Judgment; onBack?: () => void }) {
           ) : null}
           {turns.some((t) => t.phase === 'pending') ? <div className="mt-3"><Bubbles msgs={turns.filter((t) => t.phase === 'pending')} /></div> : null}
           {pending ? <SayBox placeholder="还想补充理由？写给管家，到期一起回头看" onSay={(t) => say(j, t)} /> : null}
+          {pending && held ? <p className="mt-3 text-[13px] text-steel">{plans[j.id] ? `你在自选里记下的做法：${planLabel(j, plans[j.id].keep)}。` : `你持有${stockOf(j.code).name}。`}<button type="button" onClick={() => openStock(j.code)} className="ml-1 text-link hover:underline">仓位怎么办，在自选里定 →</button></p> : null}
         </Step>
 
-        <Step n={4} title="你打算怎么做" muted={!held}>
-          {held && (pending || j.status === 'hit') ? <Planner j={j} />
-            : held ? <p className="text-sm text-steel">这条已经有结果，价格没有到管家说的位置，不需要再做什么。</p>
-            : <p className="text-sm text-steel">你{hasHoldings ? `没有持有${stockOf(j.code).name}，不需要动作。` : '还没有填持仓。'}{hasHoldings ? null : <button type="button" onClick={() => openMe('holdings')} className="ml-1 text-link hover:underline">填上持仓，看几种做法 →</button>}</p>}
-        </Step>
-
-        <Step n={5} title="对答案与复盘" done={!!reviewState[j.id]} muted={pending} last>
+        <Step n={4} title="对答案与复盘" done={!!reviewState[j.id]} muted={pending} last>
           {pending ? <p className="text-sm text-steel">还有 {j.n - j.elapsed} 个交易日。到时候管家会告诉你结果，一起看为什么对、为什么错，把经验记下来。</p> : (
             <>
               <Outcome j={j} />
+              <ChoiceLook j={j} />
               {turns.some((t) => t.phase === 'settled') ? <div className="mt-3"><Bubbles msgs={turns.filter((t) => t.phase === 'settled')} /></div> : null}
               <SayBox placeholder="写下你自己的经验（会记进长期记忆）" onSay={(t) => say(j, t)} />
             </>

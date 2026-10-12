@@ -59,7 +59,7 @@ function aboutStock(code: string, c: AskCtx): Answer {
   const w = c.holdings[code]
   if (c.hasHoldings) text.push(w ? `它占你持仓的 ${Math.round(w * 100)}%。` : '你没有持有它。')
   const todo = pending ?? js.find((j) => j.status !== 'pending')
-  return { text, links: todo ? [{ label: '按五步想清楚', review: todo.id }] : [], stocks: [code] }
+  return { text, links: todo ? [{ label: '去表态和对答案', review: todo.id }] : [], stocks: [code] }
 }
 
 function aboutScore(c: AskCtx): Answer {
@@ -91,7 +91,7 @@ function aboutHoldings(c: AskCtx): Answer {
   return {
     text: [`你持有的股票里，有 ${js.length} 只管家认为短期有下跌风险：${js.map((j) => `${stockOf(j.code).name}（占 ${Math.round(c.holdings[j.code] * 100)}%）`).join('、')}。`,
       '每条判断的第四步里有不动、减一半、全部卖出三种做法和各自的代价，也可以自己定比例。这不是投资建议，决定由你来做。'],
-    links: js.map((j) => ({ label: `${stockOf(j.code).name}的做法`, review: j.id })),
+    links: js.map((j) => ({ label: `${stockOf(j.code).name}的做法`, code: j.code })),
   }
 }
 

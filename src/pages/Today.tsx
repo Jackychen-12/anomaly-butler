@@ -224,7 +224,7 @@ function Rows({ list }: { list: Judgment[] }) {
   )
 }
 
-/** 一件事一张卡：标题、传导路径图（事件 → 途径 → 你的自选股）、管家的判断和进度。其余文字放进判断页的五步里 */
+/** 一件事一张卡：标题、传导路径图（事件 → 途径 → 你的自选股）、管家的判断和进度。其余文字放进判断页的四步里 */
 function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level; judgments: Judgment[]; compact?: boolean }) {
   const { openStock, openReview, profile } = useStore()
   const [open, setOpen] = useState(!compact)
@@ -261,7 +261,7 @@ function EventCard({ a, level, judgments, compact }: { a: Anomaly; level: Level;
               {mean ? <p className="mt-1 text-[13px] text-on-lavender">{mean}</p> : null}
               <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
                 {j.status === 'pending' ? <VoteButtons j={j} /> : null}
-                <button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">按五步想清楚 →</button>
+                <button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">去表态和对答案 →</button>
               </div>
             </div>
             <JudgmentMeter j={j} />
@@ -306,7 +306,7 @@ function MovesCard({ moves, judgments, levelOf }: { moves: Anomaly[]; judgments:
                 <div className="mt-2.5 grid gap-x-5 gap-y-2.5 sm:grid-cols-[minmax(0,1fr)_220px]">
                   <div className="min-w-0">
                     <p className="text-sm"><span className="text-steel">管家认为　</span><span className="font-medium">{j.text.replace(/（.*）$/, '')}</span></p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">{j.status === 'pending' ? <VoteButtons j={j} /> : null}<button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">按五步想清楚 →</button></div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">{j.status === 'pending' ? <VoteButtons j={j} /> : null}<button type="button" onClick={() => openReview(j.id)} className="text-[13px] text-link hover:underline">去表态和对答案 →</button></div>
                   </div>
                   <JudgmentMeter j={j} />
                 </div>
