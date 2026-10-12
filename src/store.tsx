@@ -4,6 +4,7 @@ import type { Answer } from './assistant'
 import { DEMO_HOLDINGS, SEED_REASONS, SEED_VOTES, STOCKS, TICKS, TODAY, type Vote } from './data/case'
 import { signalOf } from './data/signals'
 import { highAllowed } from './digest'
+import { DEFAULT_LLM, type Llm } from './llm'
 import { configure, DEFAULT_RULES, grade, judgmentsAt, PREF_LABEL, type Anomaly, type Grade, type Judgment, type Pref, type Rules } from './engine'
 import { EMPTY_PROFILE, styleFactor, type PlanChoice, type Profile } from './profile'
 
@@ -39,7 +40,7 @@ export type Lesson = { id: string; jid: string; signal: string; code: string; te
 export type Turn = { who: 'me' | 'butler'; text: string; phase: 'pending' | 'settled' }
 /** 一条判断复盘后的结论：记下了管家的经验 / 不记 / 没有可记的经验、只是看过 */
 export type ReviewState = 'kept' | 'skipped' | 'ack'
-export type Llm = { on: boolean; url: string; key: string; model: string }
+export type { Llm } from './llm'
 /** 一轮提问：a 为空表示还在等回答 */
 export type ChatMsg = { q: string; a?: Answer; error?: string }
 
@@ -110,7 +111,7 @@ function fresh(tick: string): Saved {
   configure(DEFAULT_RULES)
   const done = judgmentsAt(tick).filter((j) => SEED_REVIEWED.includes(j.id) && j.review)
   return {
-    votes: SEED_VOTES, prefs: {}, holdings: DEMO_HOLDINGS, memory: [], onboarded: false, llm: { on: false, url: '', key: '', model: '' },
+    votes: SEED_VOTES, prefs: {}, holdings: DEMO_HOLDINGS, memory: [], onboarded: false, llm: DEFAULT_LLM,
     lessons: done.map((j) => ({ id: `seed-${j.id}`, jid: j.id, signal: j.anomaly.signal, code: j.code, text: j.review!.lesson, by: 'butler' as const, at: j.settledOn!, seed: true })),
     reviewState: Object.fromEntries(done.map((j) => [j.id, 'kept' as const])), dialog: {},
     profile: EMPTY_PROFILE, reasons: SEED_REASONS, rules: DEFAULT_RULES, plans: {}, agent: DEFAULT_AGENT, sub: FREE_SUB,
@@ -120,7 +121,7 @@ function load(tick: string): Saved {
   try {
     const base = fresh(tick), got = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Saved>
     // 新加的设置项用默认值补上
-    return { ...base, ...got, rules: { ...base.rules, ...got.rules }, agent: { ...base.agent, ...got.agent, notify: { ...base.agent.notify, ...got.agent?.notify } }, profile: { ...base.profile, ...got.profile }, sub: subOf(got.sub) }
+    return { ...base, ...got, rules: { ...base.rules, ...got.rules }, agent: { ...base.agent, ...got.agent, notify: { ...base.agent.notify, ...got.agent?.notify } }, profile: { ...base.profile, ...got.profile }, sub: subOf(got.sub), llm: got.llm?.url ? got.llm : base.llm }
   } catch { return fresh(tick) }
 }
 const pageFromHash = (): Page => {

@@ -2,6 +2,7 @@
  * 提问：默认用本地规则，根据当前的数据拼出回答，离线可用；
  * 在「我的 → 设置」里接入模型接口后，改由模型回答（见 askLlm）。
  */
+import { chat, GROUND } from './llm'
 import type { Tier } from './data/signals'
 import { STOCKS, type Vote } from './data/case'
 import { anomaliesAt, anomaliesOf, fmtDate, isFresh, judgmentsAt, judgmentsOf, lastBar, score, signed, stockOf } from './engine'
@@ -105,29 +106,16 @@ function help(): Answer {
   }
 }
 
-/** 调用用户自己配置的模型接口（OpenAI 兼容的 chat/completions）。只把当前已知的信息交给模型。 */
-export async function askLlm(q: string, c: AskCtx, llm: Llm): Promise<string> {
+/** 把问题和当前已知的资料交给模型回答。只给当前时间之前的信息 */
+export async function askLlm(q: string, c: AskCtx & { own?: string[]; profile?: string }, llm: Llm): Promise<string> {
   const context = {
     当前时间: `${c.tick} 08:30（开盘前）`,
     自选: STOCKS.map((s) => { const b = lastBar(s.code, c.tick); return { 名称: s.name, 代码: s.symbol, 最近收盘: b.c, 涨跌幅: b.p, 持仓占比: c.hasHoldings ? c.holdings[s.code] ?? 0 : '未填' } }),
     异动: anomaliesAt(c.tick).slice(0, 12).map((a) => ({ 标题: a.title, 时间: a.when, 类型: a.cat, 影响: a.hits.map((h) => stockOf(h).name), 说明: a.chain.map((x) => x.text) })),
     判断: judgmentsAt(c.tick).map((j) => ({ 内容: j.text, 状态: j.status, 作废条件: j.invalid, 复盘: j.review })),
     长期记忆里的经验: c.lessons.map((l) => ({ 信号: signalOf(l.signal)?.name ?? l.signal, 内容: l.text, 谁写的: l.by === 'me' ? '用户' : '管家' })),
+    用户自己写下的话: c.own ?? [],
+    用户的投资画像: c.profile || '未设置',
   }
-  const res = await fetch(llm.url.replace(/\/$/, '') + '/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llm.key}` },
-    body: JSON.stringify({
-      model: llm.model,
-      messages: [
-        { role: 'system', content: '你是「异动管家」，帮用户盯自选股的异动。只根据给出的资料回答，资料里没有的就说不知道；不要使用当前时间之后的信息。用大白话，三五句话以内。不给出具体买卖指令，涉及调仓时只说明选择和代价。' },
-        { role: 'user', content: `资料：${JSON.stringify(context)}\n\n问题：${q}` },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`接口返回 ${res.status}`)
-  const data = await res.json()
-  const text = data?.choices?.[0]?.message?.content
-  if (typeof text !== 'string' || !text.trim()) throw new Error('接口没有返回内容')
-  return text.trim()
+  return chat(llm, `${GROUND}三五句话以内。涉及调仓时只说明几种做法和各自的代价。`, `资料：${JSON.stringify(context)}\n\n问题：${q}`, 500)
 }

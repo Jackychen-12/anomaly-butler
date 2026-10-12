@@ -2,6 +2,7 @@
  * 和管家对话的面板。PC 上是今日页的右侧栏，手机上从底部输入条弹出。对话存在全局状态里，换页面不丢。
  * 面板从上到下：管家是谁、记着什么 → 管家先开口（问候 + 主动提醒）→ 可以直接点的问题 → 对话 → 输入框。
  */
+import { llmName, llmReady } from './llm'
 import { signalOf, TIER_LABEL } from './data/signals'
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ArrowUp, ChevronRight, RotateCcw } from 'lucide-react'
@@ -58,8 +59,8 @@ function Reply({ a, error, onGo }: { a?: Answer; error?: string; onGo: (l: Link)
  * tips：管家想主动说的事。传了就在开场白后面列出来（PC 右侧栏用；手机上这些提醒留在主内容里）。
  * headline：开场白里说的「今天有几件事」。
  */
-export function AskPanel({ onNavigate, autoFocus, tips, headline, bare }: { onNavigate?: () => void; autoFocus?: boolean; tips?: Nudge[]; headline?: string; bare?: boolean }) {
-  const { tick, prevTick, votes, holdings, hasHoldings, lessons, llm, remember, chat, setChat, profile } = useStore()
+export function AskPanel({ onNavigate, autoFocus, tips, headline, headlineBy, bare }: { onNavigate?: () => void; autoFocus?: boolean; tips?: Nudge[]; headline?: string; headlineBy?: string; bare?: boolean }) {
+  const { tick, prevTick, votes, holdings, hasHoldings, lessons, llm, remember, chat, setChat, profile, memory } = useStore()
   const inputId = useId()
   const jump = useGo()
   const go = (l: Link) => { jump(l); onNavigate?.() }
@@ -86,11 +87,11 @@ export function AskPanel({ onNavigate, autoFocus, tips, headline, bare }: { onNa
     setInput('')
     const local = answerLocal(text, ctx)
     remember({ kind: 'ask', text: `问过：${text}` })
-    if (!(llm.on && llm.url && llm.key && llm.model)) { setChat((l) => [...l, { q: text, a: local }]); return }
+    if (!llmReady(llm)) { setChat((l) => [...l, { q: text, a: local }]); return }
     setBusy(true)
     setChat((l) => [...l, { q: text }])
     try {
-      const reply = await askLlm(text, ctx, llm)
+      const reply = await askLlm(text, { ...ctx, own: memory.filter((m) => m.kind === 'own').map((m) => m.text), profile: profileLabel(profile) }, llm)
       setChat((l) => l.map((m, i) => (i === l.length - 1 ? { q: text, a: { ...local, text: reply.split(/\n+/) } } : m)))
     } catch (e) {
       // 模型接口出错时退回本地回答，并说明原因
@@ -123,6 +124,7 @@ export function AskPanel({ onNavigate, autoFocus, tips, headline, bare }: { onNa
             <Avatar />
             <div className="min-w-0 flex-1 pt-0.5">
               <p className="text-sm leading-relaxed text-charcoal">{headline ?? '想到什么直接问我。'}</p>
+              {headlineBy ? <p className="mt-1 text-[11px] text-stone">{headlineBy}</p> : null}
               {tips?.length ? (
                 <ul className="mt-2.5 overflow-hidden rounded-lg border border-hairline bg-canvas">
                   {tips.map((t) => (
@@ -177,7 +179,7 @@ export function AskPanel({ onNavigate, autoFocus, tips, headline, bare }: { onNa
             className="min-h-7 min-w-0 flex-1 resize-none bg-transparent py-1 text-sm leading-5 outline-none placeholder:text-stone focus-visible:outline-none" />
           <button type="submit" disabled={busy || !input.trim()} aria-label="发送" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-white transition-colors hover:bg-primary-pressed disabled:bg-hairline disabled:text-stone')}><ArrowUp className="h-4 w-4" /></button>
         </form>
-        <p className="mt-1.5 text-center text-[11px] text-stone">回车发送 · 目前由内置规则回答，能答的问题有限</p>
+        <p className="mt-1.5 text-center text-[11px] text-stone">{llmReady(llm) ? `回车发送 · 由 ${llmName(llm)} 根据管家掌握的资料回答` : '回车发送 · 目前由内置规则回答，能答的问题有限'}</p>
       </div>
     </div>
   )

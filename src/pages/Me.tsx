@@ -3,18 +3,17 @@
  * 画像（管家眼里的你：你说的 + 它观察到的 + 用在哪）、持仓、长期记忆（经验、我的逻辑、记录）、设置（这个助理能做什么、何时找你、连着什么）、订阅（各档的模型用量）。
  */
 import { digest } from '../digest'
+import { chat, LLM_PRESETS, llmName, llmReady } from '../llm'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { DEMO_HOLDINGS, STOCKS } from '../data/case'
 import { SIGNALS } from '../data/signals'
-import { signalOf } from '../data/signals'
 import { JudgmentMeter } from '../charts'
-import { fmtDate, judgmentsAt, recentlySettled, stockOf } from '../engine'
-import { reasonStats } from '../review'
+import { judgmentsAt, recentlySettled, stockOf } from '../engine'
 import { Button, cn, LevelTag } from '../kit'
 import { Scroll } from '../layout'
-import { useStore, type Memory, type MeTab } from '../store'
-import { ObservedPanel } from './Observed'
+import { useStore, type MeTab } from '../store'
+import { MemoryTab } from './Memory'
 import { PlanTab, TIER_LABEL, usageNote, useUsage } from './Plan'
 import { ProfileTab } from './Profile'
 
@@ -34,7 +33,7 @@ export function MePage() {
             className={cn('-mb-px h-9 whitespace-nowrap border-b-2 px-2 text-sm sm:px-3', meTab === t.key ? 'border-ink font-medium text-ink' : 'border-transparent text-steel hover:text-ink')}>{t.label}</button>
         ))}
       </div>
-      {meTab === 'holdings' ? <Holdings /> : meTab === 'memory' ? <><OwnNotes /><ObservedPanel /><MemoryList /></> : meTab === 'profile' ? <ProfileTab /> : meTab === 'plan' ? <PlanTab /> : <AgentSettings />}
+      {meTab === 'holdings' ? <Holdings /> : meTab === 'memory' ? <MemoryTab /> : meTab === 'profile' ? <ProfileTab /> : meTab === 'plan' ? <PlanTab /> : <AgentSettings />}
     </div>
     </Scroll>
   )
@@ -113,108 +112,8 @@ function Holdings() {
 }
 
 // ── 长期记忆 ────────────────────────────────────────────
-const KIND: Record<Memory['kind'], string> = { own: '我自己写的', vote: '你的表态', note: '你说过的理由', plan: '调仓选择', rule: '规则调整', profile: '画像变化', pref: '提醒偏好', holding: '持仓变化', ask: '问过的问题' }
 
 /** 我想让管家记住的：用户自己写，管家不改 */
-function OwnNotes() {
-  const { memory, remember, forget } = useStore()
-  const [text, setText] = useState('')
-  const mine = memory.filter((m) => m.kind === 'own')
-  const add = () => { const t = text.trim(); if (!t) return; remember({ kind: 'own', text: t }); setText('') }
-  return (
-    <section className="mt-5 rounded-lg border border-hairline p-4">
-      <h2 className="text-base font-semibold">我想让管家记住的</h2>
-      <p className="mt-0.5 text-[13px] text-steel">你自己写的投资逻辑、教训或提醒。管家不会改，只会在合适的时候拿出来。</p>
-      <form onSubmit={(e) => { e.preventDefault(); add() }} className="mt-3 flex gap-2">
-        <label htmlFor="own-note" className="sr-only">写一条想让管家记住的话</label>
-        <input id="own-note" value={text} onChange={(e) => setText(e.target.value)} placeholder="比如：消费电子我只做长线，关税消息不追着卖" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-md border border-hairline-strong bg-canvas px-3 text-sm outline-none placeholder:text-stone focus:border-primary focus:ring-1 focus:ring-primary" />
-        <Button type="submit" variant="primary" disabled={!text.trim()}>记下</Button>
-      </form>
-      {mine.length ? (
-        <ul className="mt-3 flex flex-col gap-1.5">
-          {mine.map((m) => (
-            <li key={m.id} className="flex items-start gap-2 rounded-md bg-surface px-3 py-2 text-sm"><span className="min-w-0 flex-1">{m.text}</span>
-              <button type="button" onClick={() => forget(m.id)} className="shrink-0 text-xs text-steel hover:text-up" aria-label={`删除：${m.text}`}>删除</button></li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
-  )
-}
-
-function MemoryList() {
-  const { memory, forget, lessons, forgetLesson, openReview, setPage, tick, votes, reasons } = useStore()
-  const logic = reasonStats(judgmentsAt(tick), votes, reasons)
-  const groups = (Object.keys(KIND) as Memory['kind'][]).filter((k) => k !== 'own').map((k) => ({ k, items: memory.filter((m) => m.kind === k) })).filter((g) => g.items.length)
-  const signals = [...new Set(lessons.map((l) => l.signal))]
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 @min-[1000px]:grid-cols-2">
-      <section className="mt-5 min-w-0">
-        <h2 className="text-base font-semibold">经验 <span className="text-[13px] font-normal text-steel">{lessons.length} 条</span></h2>
-        <p className="mt-0.5 text-[13px] text-steel">复盘时总结的。按信号归类，同类信号再出现时拿出来参考。</p>
-        {lessons.length === 0 ? (
-          <p className="mt-3 rounded-lg bg-surface-soft px-4 py-6 text-sm text-steel">还没有经验。<button type="button" onClick={() => setPage('review')} className="text-link hover:underline">去复盘</button>里和管家聊一条有结果的判断。</p>
-        ) : (
-          <div className="mt-3 flex flex-col gap-3">
-            {signals.map((sig) => (
-              <div key={sig} className="rounded-lg border border-hairline">
-                <h3 className="border-b border-hairline px-3.5 py-2 text-sm font-semibold">{signalOf(sig)?.name ?? sig}</h3>
-                <ul>
-                  {lessons.filter((l) => l.signal === sig).map((l) => (
-                    <li key={l.id} className="flex items-start gap-2.5 border-b border-hairline-soft px-3.5 py-2.5 text-sm last:border-b-0">
-                      <span className={cn('mt-0.5 shrink-0 rounded-xs px-1.5 text-xs font-medium leading-5', l.by === 'me' ? 'bg-tint-lavender text-on-lavender' : 'bg-tint-gray text-on-gray')}>{l.by === 'me' ? '我' : '管家'}</span>
-                      <span className="min-w-0 flex-1 text-charcoal">{l.text}
-                        <span className="mt-0.5 block text-xs text-stone">
-                          <button type="button" onClick={() => openReview(l.jid)} className="hover:text-ink hover:underline">来自{stockOf(l.code).name}那条判断（{fmtDate(l.at)}出结果）</button>{l.seed ? ' · 演示预置' : ''}
-                        </span>
-                      </span>
-                      <button type="button" onClick={() => forgetLesson(l.id)} className="shrink-0 text-xs text-steel hover:text-up" aria-label={`删除这条经验：${l.text}`}>删除</button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="min-w-0 @min-[1000px]:mt-5">
-        <h2 className="text-base font-semibold">我的逻辑</h2>
-        <p className="mt-0.5 text-[13px] text-steel">你表态时选过的理由，各用了几次、看对几次。看得出哪种想法靠得住。</p>
-        {logic.length === 0 ? <p className="mt-3 rounded-lg bg-surface-soft px-4 py-5 text-sm text-steel">表态时选一个理由，结果出来后这里就有记录。</p> : (
-          <ul className="mt-3 overflow-hidden rounded-lg border border-hairline">
-            {logic.map((r) => (
-              <li key={r.label} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-3 border-b border-hairline-soft px-3.5 py-2.5 text-sm last:border-b-0">
-                <span className="min-w-0 truncate">{r.label}</span>
-                <span className="h-2 overflow-hidden rounded-r-[4px] bg-tint-gray" role="img" aria-label={`用过 ${r.used} 次，看对 ${r.right} 次`}><span className="block h-full rounded-r-[4px] bg-ink" style={{ width: `${(r.right / r.used) * 100}%` }} /></span>
-                <span className="text-[13px] tabular-nums text-steel">对 {r.right} / 用 {r.used}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <h2 className="mt-7 text-base font-semibold">管家记下的事</h2>
-        <p className="mt-0.5 text-[13px] text-steel">表态、理由、调仓选择、规则和画像的改动。只存在你的浏览器里。演示预置了 3 条表态和理由，不在下面。</p>
-        {groups.length === 0 ? <p className="mt-3 rounded-lg bg-surface-soft px-4 py-6 text-sm text-steel">还没有新的记录。去「今日」对一条判断表个态，或者问管家一个问题。</p> : null}
-        <div className="mt-3 flex flex-col gap-3">
-          {groups.map(({ k, items }) => (
-            <div key={k} className="rounded-lg border border-hairline">
-              <h3 className="border-b border-hairline px-3.5 py-2 text-sm font-semibold">{KIND[k]} <span className="font-normal text-stone">{items.length}</span></h3>
-              <ul>
-                {items.slice(0, 8).map((m) => (
-                  <li key={m.id} className="flex items-start gap-2 border-b border-hairline-soft px-3.5 py-2 text-[13px] last:border-b-0">
-                    <span className="min-w-0 flex-1 text-charcoal">{m.text}</span>
-                    <button type="button" onClick={() => forget(m.id)} className="shrink-0 text-xs text-steel hover:text-up" aria-label={`删除这条记录：${m.text}`}>删除</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  )
-}
-
 // ── 管家设置 ────────────────────────────────────────────
 function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
@@ -270,6 +169,42 @@ function PushPreview() {
   )
 }
 
+/** 大模型：填了 key 之后，问答、每天的开场白和「管家眼中的你」由模型来写。key 只存在这个浏览器里，不进代码仓库 */
+function LlmSettings() {
+  const { llm, setLlm } = useStore()
+  const [test, setTest] = useState<{ state: 'idle' | 'busy' | 'ok' | 'fail'; msg?: string }>({ state: 'idle' })
+  const run = async () => {
+    setTest({ state: 'busy' })
+    try { await chat({ ...llm, on: true }, '只回复两个字。', '收到', 8); setTest({ state: 'ok' }); if (!llm.on) setLlm({ ...llm, on: true }) }
+    catch (e) { setTest({ state: 'fail', msg: e instanceof Error ? e.message : '连不上' }) }
+  }
+  const field = 'h-9 w-full rounded-md border border-hairline-strong bg-canvas px-3 text-sm outline-none placeholder:text-stone focus-visible:border-primary'
+  return (
+    <section>
+      <h2 className="eyebrow mb-1.5 px-1">大模型</h2>
+      <div className="rounded-lg border border-hairline p-4">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1"><p className="text-sm font-medium">用大模型来回答和总结</p><p className="mt-0.5 text-[13px] text-steel">{llmReady(llm) ? `已接上 ${llmName(llm)}：问答、每天的开场白、「管家眼中的你」由它来写。` : '没接时，这些由内置规则生成。'}</p></div>
+          <Toggle checked={llm.on} disabled={!llm.key} onChange={(v) => setLlm({ ...llm, on: v })} label="用大模型来回答和总结" />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="服务商">
+          {LLM_PRESETS.map((p) => <button key={p.name} type="button" aria-pressed={llm.url === p.url} onClick={() => setLlm({ ...llm, url: p.url, model: p.model })} className={cn('h-7 rounded-full border px-3 text-[13px]', llm.url === p.url ? 'border-primary bg-tint-lavender font-medium text-on-lavender' : 'border-hairline text-slate hover:bg-surface-soft')}>{p.name}</button>)}
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="block text-xs text-steel">接口地址<input value={llm.url} onChange={(e) => setLlm({ ...llm, url: e.target.value.trim() })} autoComplete="off" spellCheck={false} className={cn(field, 'mt-1')} /></label>
+          <label className="block text-xs text-steel">模型<input value={llm.model} onChange={(e) => setLlm({ ...llm, model: e.target.value.trim() })} autoComplete="off" spellCheck={false} className={cn(field, 'mt-1')} /></label>
+        </div>
+        <label className="mt-2 block text-xs text-steel">API key<input type="password" value={llm.key} onChange={(e) => { setLlm({ ...llm, key: e.target.value.trim(), on: e.target.value.trim() ? llm.on : false }); setTest({ state: 'idle' }) }} placeholder="sk-…" autoComplete="off" spellCheck={false} className={cn(field, 'mt-1 font-mono')} /></label>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button size="sm" variant="dark" disabled={!llm.key || test.state === 'busy'} onClick={() => void run()}>{test.state === 'busy' ? '正在测试…' : '测试并启用'}</Button>
+          <span className={cn('text-[13px]', test.state === 'ok' ? 'text-on-mint' : test.state === 'fail' ? 'text-warning' : 'text-steel')}>{test.state === 'ok' ? '连上了，已启用。' : test.state === 'fail' ? `没连上：${test.msg}` : ''}</span>
+        </div>
+        <p className="mt-3 text-xs text-steel">key 只存在这个浏览器里，由浏览器直接发给模型服务商，不经过别的服务器，也不会进代码仓库。换一台设备需要重新填。</p>
+      </div>
+    </section>
+  )
+}
+
 function AgentSettings() {
   const { agent, setAgent, lessons, rules, tick, openMe, setPage, setOnboarded, reset, sub } = useStore()
   const usage = useUsage()
@@ -316,6 +251,8 @@ function AgentSettings() {
         </Group>
 
         <PushPreview />
+
+        <LlmSettings />
 
         <Group title="通用">
           <Item title="重看新手引导" onClick={() => { setOnboarded(false); setPage('today') }} />

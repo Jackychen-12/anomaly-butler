@@ -15,13 +15,14 @@ import { signalOf } from '../data/signals'
 import { PathTree } from '../path'
 import { Sheet, useIsWide, WithRail } from '../layout'
 import { VoteButtons } from '../parts'
+import { GROUND, llmName, useGenerated } from '../llm'
 import { meaning, profileSet } from '../profile'
 import { nudges } from '../proactive'
 import { useStore } from '../store'
 
 export function TodayPage() {
   const st = useStore()
-  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent, rules } = st
+  const { tick, prevTick, votes, prefs, holdings, hasHoldings, gradeOf, reviewState, profile, agent, rules, llm } = st
   const go = useGo()
   const wide = useIsWide()
   const [sheet, setSheet] = useState(false)
@@ -39,7 +40,10 @@ export function TodayPage() {
   const headline = dg.signals
     ? `早上好。今天捕捉到 ${dg.signals} 条信号，归并成 ${dg.things.length} 件事，其中 ${need} 件需要你看，排在左边了。`
     : '早上好。今天自选股上很平静，没有新的事需要你看。'
-  const rail = wide ? <AskPanel tips={tips} headline={headline} /> : null
+  // 接了大模型时，开场白由它根据今天归并出的这几件事来写；没接或没写出来时用上面那句
+  const material = JSON.stringify({ 日期: `${fmtDate(tick)}开盘前`, 信号数: dg.signals, 需要看的事: dg.need.map((t) => ({ 等级: t.level, 事: t.cause?.title ?? '行情指标异动，没找到对应事件', 说明: t.cause?.chain.map((c) => c.text), 涉及: [...new Set([...(t.cause?.hits ?? []), ...t.reactions.flatMap((r) => r.hits)])].map((c) => `${stockOf(c).name}（上一交易日 ${signed(changeOver(c, tick, 1))}%${holdings[c] ? `，占持仓 ${Math.round(holdings[c] * 100)}%` : ''}）`), 行情反应: t.reactions.flatMap((r) => r.indicators?.map((h) => `${stockOf(r.hits[0]).name}${h.label}`) ?? [r.title]) })), 在等结果的判断: js.filter((j) => j.status === 'pending').map((j) => j.text) })
+  const brief = useGenerated(llm, 'brief', `${GROUND}写今天开盘前的一段开场白，3 句以内：先说今天最该看的一件事和它为什么和用户有关（点到他仓位最重的那只），再用一句带过其余的。以「早上好。」开头。`, material, 220)
+  const rail = wide ? <AskPanel tips={tips} headline={brief.text ?? headline} headlineBy={brief.text ? `${llmName(llm)} 根据今天的 ${dg.things.length} 件事写的` : brief.loading ? '正在让模型写今天的开场白…' : undefined} /> : null
   // 默认只展开最重要的；窄屏上只展开第一件
   const openByDefault = (t: Thing) => t.level !== '低' && (wide || t === dg.things[0])
   const card = (t: Thing) => <ThingCard key={t.id} t={t} judgments={js} defaultOpen={openByDefault(t)} />
@@ -51,6 +55,7 @@ export function TodayPage() {
           <p className="text-[13px] text-steel">{fmtDate(tick)} {weekday(tick)} · 开盘前</p>
           <h1 className="mt-0.5 text-2xl font-semibold leading-tight tracking-tight">{need ? `今天有 ${need} 件事需要你看` : dg.signals ? '今天没有需要你特别留意的事' : '今天没有新的事需要你看'}</h1>
           <Funnel d={dg} />
+          {brief.text && !wide ? <p className="mt-3 rounded-lg bg-surface-soft px-3.5 py-2.5 text-sm leading-relaxed text-charcoal">{brief.text}<span className="mt-1 block text-[11px] text-stone">{llmName(llm)} 根据今天的 {dg.things.length} 件事写的</span></p> : null}
           {profileSet(profile) ? null : (
             <button type="button" onClick={() => st.openMe('profile')} className="mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-hairline-strong px-3.5 py-2 text-left text-[13px] text-slate hover:bg-surface-soft">
               <span className="min-w-0 flex-1">花半分钟告诉管家你能接受多大的跌幅、一般拿多久，提醒会按你的风格排。</span><span className="shrink-0 text-link">设置画像 →</span>
