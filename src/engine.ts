@@ -203,8 +203,8 @@ export function gradeReason(g: Grade): string {
   if (g.weightFactor != null) parts.push(g.weightFactor > 1.05 ? '你的仓位重' : g.weightFactor < 0.95 ? '你的仓位轻或没有持仓' : '你的仓位适中')
   if (g.prefFactor > 1) parts.push('你要求多提醒')
   if (g.prefFactor < 1) parts.push('你要求少提醒')
-  if (g.styleFactor > 1) parts.push('符合你的短线风格')
-  if (g.styleFactor < 1) parts.push('你是长线，短期波动少提醒')
+  if (g.styleFactor > 1) parts.push('按你的画像上调')
+  if (g.styleFactor < 1) parts.push('按你的画像下调')
   return parts.join('，')
 }
 
