@@ -34,7 +34,7 @@ export function PriceChart({ code, anomalies, judgment }: { code: string; anomal
       <circle cx={x(bars.length - 1)} cy={y(bars[bars.length - 1].c)} r="3.5" fill="var(--ink)" />
     </svg>
     {/* 说明文字放在图外，手机上也看得清 */}
-    {judgment ? <p className="mt-1 text-xs text-up"><span aria-hidden="true">┄┄ </span>红色虚线：{judgment.line.toFixed(2)}。{judgment.status === 'hit' ? '已经跌破，管家说对了。' : judgment.status === 'pending' ? '收盘价跌破它，就算管家说对。' : '到期没有跌破。'}</p> : null}
+    {judgment ? <p className="mt-1 text-xs text-up"><span aria-hidden="true">┄┄ </span>红色虚线：{judgment.line.toFixed(2)}。{judgment.status === 'hit' ? `已经${judgment.up ? '涨过' : '跌破'}，管家说对了。` : judgment.status === 'pending' ? `收盘价${judgment.up ? '涨过' : '跌破'}它，就算管家说对。` : `到期没有${judgment.up ? '涨过' : '跌破'}。`}</p> : null}
     </>
   )
 }
@@ -150,7 +150,7 @@ export function JudgmentCard({ j, compact, onOpen }: { j: Judgment; compact?: bo
         {compact ? null : (
           <dl className="mt-2.5 grid gap-x-3 gap-y-0.5 text-[13px] text-charcoal @min-[440px]:grid-cols-[auto_1fr] @min-[440px]:gap-y-1 [&>dt]:mt-1.5 @min-[440px]:[&>dt]:mt-0">
             <dt className="text-steel">什么情况下作废</dt><dd>{j.invalid}</dd>
-            <dt className="text-steel">哪天对答案</dt><dd className="tabular-nums">{j.dueDate ? `${fmtDate(j.dueDate)} 收盘后，或提前跌破时` : '—'}</dd>
+            <dt className="text-steel">哪天对答案</dt><dd className="tabular-nums">{j.dueDate ? `${fmtDate(j.dueDate)} 收盘后，或提前到价时` : '—'}</dd>
             <dt className="text-steel">这类信号以往</dt><dd>{evalLine(j.anomaly.signal, tick)}</dd>
             {prior.length ? <><dt className="text-steel">参考的经验</dt><dd>{prior.slice(0, 2).map((l) => l.text).join(' ')}{prior.length > 2 ? ` 等 ${prior.length} 条` : ''}</dd></> : null}
           </dl>
@@ -158,7 +158,7 @@ export function JudgmentCard({ j, compact, onOpen }: { j: Judgment; compact?: bo
         {j.latest != null ? (
           <p className="mt-2 text-[13px] text-steel">
             已过 {j.elapsed}/{j.n} 个交易日，目前 <span className={cn('tabular-nums', signClass(j.latest))}>{signed(j.latest)}%</span>
-            ，最低到过 <span className={cn('tabular-nums', signClass(j.worst!))}>{signed(j.worst!)}%</span>
+            ，{j.up ? '最高' : '最低'}到过 <span className={cn('tabular-nums', signClass(j.worst!))}>{signed(j.worst!)}%</span>
           </p>
         ) : null}
         {j.status === 'void' && j.voidOn ? <p className="mt-2 text-[13px] text-steel">{j.voidOn.text}</p> : null}

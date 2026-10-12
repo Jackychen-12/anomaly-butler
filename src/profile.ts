@@ -30,7 +30,7 @@ export function styleFactor(p: Profile, group: SignalGroup | undefined): number 
 
 /** 这条判断对「你」意味着什么：一句话，对照承受上限和持有周期 */
 export function meaning(p: Profile, j: Judgment): string | null {
-  if (!profileSet(p)) return null
+  if (!profileSet(p) || j.up) return null
   const drop = Math.abs(j.thr)
   if (drop >= p.tolerance!) return `这个跌幅（${drop}%）到了你设定的承受上限（${p.tolerance}%）。`
   if (p.horizon === 'long') return `你是长线，${drop}% 在你能接受的 ${p.tolerance}% 以内，通常不用动。`
@@ -41,14 +41,14 @@ export function meaning(p: Profile, j: Judgment): string | null {
 export type PlanKey = 'hold' | 'half' | 'exit'
 /** 三种做法里，哪一种更接近用户设定的风格 */
 export function fitPlan(p: Profile, j: Judgment): PlanKey | null {
-  if (!profileSet(p)) return null
+  if (!profileSet(p) || j.up) return null
   if (p.reaction === 'add') return 'hold'
   if (p.reaction === 'cut') return 'half'
   return Math.abs(j.thr) >= p.tolerance! ? 'half' : 'hold'
 }
 /** 用户选的做法和设定的风格不一致时，提醒一句（不拦着） */
 export function conflict(p: Profile, keep: number, j: Judgment): string | null {
-  if (!profileSet(p)) return null
+  if (!profileSet(p) || j.up) return null
   if (p.horizon === 'long' && keep === 0) return '你设定的是长线，这次选择全部卖出，和平时的风格不一样。'
   if (p.reaction === 'add' && keep < 1) return '你设定的是越跌越买，这次选择减仓，和平时不一样。'
   if (p.reaction === 'cut' && keep === 1 && Math.abs(j.thr) >= p.tolerance!) return '跌幅已到你设定的承受上限，而你选择不动，和设定的做法不一样。'

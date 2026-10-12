@@ -12,7 +12,7 @@ export const priorLessons = (j: Judgment, lessons: Lesson[]) => lessons.filter((
  */
 export const REASONS: Record<'agree' | 'disagree', { key: string; label: string }[]> = {
   agree: [{ key: 'event', label: '事情影响确实大' }, { key: 'path', label: '传导到它很直接' }, { key: 'notpriced', label: '价格还没反映' }],
-  disagree: [{ key: 'event', label: '事情本身没那么严重' }, { key: 'path', label: '传不到这只股票' }, { key: 'priced', label: '已经跌过了，价格里有了' }, { key: 'relief', label: '后面会缓和或有对冲' }],
+  disagree: [{ key: 'event', label: '事情本身没那么大' }, { key: 'path', label: '传不到这只股票' }, { key: 'priced', label: '价格里已经有了' }, { key: 'relief', label: '后面会反转或有对冲' }],
 }
 export const reasonLabel = (vote: Vote | undefined, key: string | undefined) => (vote && vote !== 'watch' ? REASONS[vote].find((r) => r.key === key)?.label : undefined)
 

@@ -86,7 +86,7 @@ function aboutLessons(c: AskCtx): Answer {
 
 function aboutHoldings(c: AskCtx): Answer {
   if (!c.hasHoldings) return { text: ['我还不知道你持有哪些股票，所以没法判断要不要调仓。', '补充持仓后，我会针对你持有的、而且管家有判断的股票，列出几种做法和各自的代价。决定由你来做，我不会替你下单。'], links: [{ label: '补充持仓', me: 'holdings' }] }
-  const js = judgmentsAt(c.tick).filter((j) => j.status === 'pending' && (c.holdings[j.code] ?? 0) > 0)
+  const js = judgmentsAt(c.tick).filter((j) => j.status === 'pending' && !j.up && (c.holdings[j.code] ?? 0) > 0)
   if (!js.length) return { text: ['你持有的股票上，目前没有在等结果的判断，不需要因为异动调仓。'], links: [{ label: '看持仓', me: 'holdings' }] }
   return {
     text: [`你持有的股票里，有 ${js.length} 只管家认为短期有下跌风险：${js.map((j) => `${stockOf(j.code).name}（占 ${Math.round(c.holdings[j.code] * 100)}%）`).join('、')}。`,

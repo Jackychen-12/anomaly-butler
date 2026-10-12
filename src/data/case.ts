@@ -37,7 +37,7 @@ export type Category = '宏观政策' | '跨市场传导' | '公司事件' | '�
 export type JudgmentDef = {
   id: string
   code: string
-  /** 收盘价较基准价下跌超过多少（负数，百分比） */
+  /** 方向和幅度（百分比）：负数 = 判断会跌破基准价的这个幅度，正数 = 判断会涨过 */
   thr: number
   /** 观察窗口：多少个交易日 */
   n: number
@@ -164,6 +164,18 @@ export const EVENTS: EventDef[] = [
     judgments: [],
   },
   {
+    id: 'pboc-support', signal: 'market-support', tick: '2025-04-08', when: '4月8日 开盘前', cat: '宏观政策', tone: 'relief', strength: 64,
+    title: '央行表态支持汇金增持，险资入市比例上调',
+    hits: ['600519', '300750'],
+    paths: [{ via: '国家队和保险资金买入指数权重股，带动它们企稳回升', codes: ['600519', '300750'] }],
+    chain: [
+      { label: '政策', text: '央行表示坚定支持中央汇金增持、必要时提供再贷款；金融监管部门上调保险资金权益类资产配置比例上限' },
+      { label: '影响', text: '增量资金指向指数权重股，稳住大盘' },
+    ],
+    evidence: [{ label: '官方表态', text: '坚定支持中央汇金公司加大力度增持股票市场指数基金，并在必要时向中央汇金公司提供充足的再贷款支持。', source: '中国人民银行新闻发言人答记者问 · 4月8日' }],
+    judgments: [{ id: 'j-mt-support', code: '600519', thr: 5, n: 5, invalid: '关税冲突进一步升级，引发新一轮抛售' }],
+  },
+  {
     id: 'tariff-104', signal: 'tariff', tick: '2025-04-09', when: '4月8日（美东）', cat: '宏观政策', tone: 'risk', strength: 84,
     title: '美国对华关税叠加至 104%，4月9日生效',
     hits: ['NVDA', 'AAPL', 'PDD', '002475'],
@@ -224,6 +236,11 @@ export const EVENTS: EventDef[] = [
   },
 ]
 
+/** 跨市场映射：美股龙头隔夜大涨大跌时，会传到哪几只 A 股、港股自选。只列关系明确的 */
+export const CROSS: Record<string, { codes: string[]; via: string }> = {
+  AAPL: { codes: ['002475', '01810'], via: '苹果是消费电子链条的龙头，隔夜走势会传到相关公司的开盘' },
+}
+
 /** 由价量规则自动识别出的异动里，这几条管家额外给出了判断（大跌之后是否续跌）。key = 代码|日期 */
 export const AUTO_JUDGMENTS: Record<string, Omit<JudgmentDef, 'code'>> = {
   '300750|2025-04-07': { id: 'j-catl-drop', thr: -5, n: 5, invalid: '公司公告大额回购' },
@@ -251,5 +268,6 @@ export const REVIEWS: Record<string, Review> = {
   'j-tx-retaliate': { expect: 'hit', why: '假期积压的抛压在开市当日集中释放，腾讯当日下跌 12.8%。', missed: '腾讯业务与关税的直接关联不强，下跌主要来自市场整体恐慌，而不是传导链本身。', lesson: '应区分「直接受影响」和「跟随大盘」两种命中，后者不应记为传导链的功劳。' },
   'j-catl-drop': { expect: 'miss', why: '大跌之后稳市资金入场，股价企稳，窗口内没有跌破触发价。', missed: '判断发出前一天，中央汇金已经公告增持，这个稳市信号被忽略了。', lesson: '出现稳市政策后，「大跌后续跌」类判断应暂停或下调强度。' },
   'j-xm-drop': { expect: 'miss', why: '单日下跌 20.6% 之后连续反弹，窗口内没有再创新低。', missed: '稳市信号被忽略；而且单日跌幅越极端，短期反弹的可能性越高。', lesson: '单日跌幅超过 15% 时，不宜再做续跌判断。' },
+  'j-mt-support': { expect: 'miss', why: '托底稳住了股价，但没有带来持续上涨，窗口内最高离目标价只差一点。', missed: '稳市政策的作用是止跌，不等于推动上涨；同一时间关税冲突还在升级。', lesson: '稳市类信号更适合用来撤销看跌的判断，而不是发出看涨的判断。' },
   'j-nv-104': { expect: 'void', why: '判断发出当天美方宣布暂缓对等关税，事前写明的失效条件触发，不计入战绩。', missed: '政策反复本身就是这一阶段的主要特征，判断的有效期可能撑不过一天。', lesson: '政策类判断的失效条件要写得可以检验，这一条做到了。' },
 }
