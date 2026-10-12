@@ -1,0 +1,102 @@
+<style>
+.doc{flex:1;overflow:hidden;padding:44px 56px 0}
+.doc h1,.mdoc h1{font-size:30px;font-weight:600;letter-spacing:-.5px;line-height:1.25;margin-top:6px}
+.lede{color:var(--steel);font-size:15px;margin-top:8px}
+.callout{background:var(--t-peach);border-radius:8px;padding:16px 18px;margin-top:24px}
+.callout h2{font-size:18px;font-weight:600;color:var(--o-peach);margin:8px 0 12px;letter-spacing:-.1px}
+.chain{font-size:14px;color:var(--charcoal)}
+.chain div{display:flex;gap:8px;padding:3px 0}.chain div::before{content:"▸";color:var(--o-peach);opacity:.6}
+.chain .l2{padding-left:22px}.chain .l3{padding-left:44px;font-weight:600;color:var(--ink)}
+.chain small{color:var(--slate);font-weight:400;font-size:13px}
+.judge{border:1px solid var(--hairline);border-radius:12px;margin-top:14px;background:var(--canvas)}
+.judge .main{padding:16px 18px}
+.judge .q{font-size:16px;line-height:1.55;color:var(--ink)}
+.judge .q b{background:var(--t-rose);color:var(--o-rose);border-radius:4px;padding:0 6px;font-weight:600}
+.kv{display:grid;grid-template-columns:72px 1fr;gap:6px 12px;margin-top:12px;font-size:13px;color:var(--charcoal)}.kv dt{color:var(--steel)}
+.vote{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--hairline-soft);background:var(--surface-soft);border-radius:0 0 12px 12px}
+.h2{font-size:17px;font-weight:600;margin:30px 0 10px}
+.db{width:100%;border-collapse:collapse;font-size:14px}.db th{text-align:left;font-size:12px;font-weight:500;color:var(--steel);padding:7px 10px;border-bottom:1px solid var(--hairline)}.db td{padding:9px 10px;border-bottom:1px solid var(--hairline-soft)}
+.rail{width:316px;border-left:1px solid var(--hairline);padding:44px 22px 0;flex:none;background:var(--surface-soft)}
+.rail h3{font-size:14px;font-weight:600;margin-bottom:10px}
+.ev{border-top:1px solid var(--hairline);padding:12px 0;font-size:13px;color:var(--charcoal)}.ev p{margin-top:4px}
+.ev .big{font-size:22px;font-weight:600;letter-spacing:-.4px;margin-top:2px}
+.quote{border-left:3px solid var(--ink);padding-left:10px;color:var(--slate);margin-top:6px}
+.mdoc{padding:22px 18px 0;overflow:hidden;flex:1}.mdoc h1{font-size:25px}
+.mdoc .callout{padding:14px;margin-top:18px}.mdoc .callout h2{font-size:17px}
+.mdoc .chain .l2{padding-left:14px}.mdoc .chain .l3{padding-left:28px}
+.mdoc .judge .q{font-size:15px}
+</style>
+<div class="hdr"><h1>方向 A · 晨报文档</h1><p>像读一页 Notion 文档：每天一份盘前简报，异动是文档里的一个块，传导链用缩进大纲展开，证据放在旁边。主角是「读」，适合没空盯盘的人。</p></div>
+<div class="stage">
+<div class="col"><div class="cap">PC · 1300</div>
+<div class="pc">
+  <nav class="side">
+    <div class="brand"><i>异</i>异动管家</div>
+    <a class="on">今日简报 <b>1</b></a><a>自选</a><a>判断与验证</a><a>调仓</a>
+    <div class="eyebrow sec">时间机器</div>
+    <a>2025-04-03 关税冲击</a><a>2021-07-23 双减</a><a>2025-01-27 DeepSeek</a>
+    <div style="margin-top:auto" class="row steel"><span class="dot" style="margin-left:10px"></span><span style="font-size:13px">案例回放 · 未授权账户</span></div>
+  </nav>
+  <main class="doc">
+    <div class="eyebrow">2025年4月3日 周四 · 盘前 08:30</div>
+    <h1>今天有 1 条异动需要你看</h1>
+    <p class="lede">管家昨夜扫过 8 只自选、3 个市场。另有 2 条影响较小，已放进「判断与验证」备查。</p>
+    <div class="callout">
+      <div class="row"><span class="tag rose"><span class="dot hi"></span>高</span><span class="tag">宏观政策</span><span class="tag">跨市场传导</span><span class="sp steel" style="font-size:13px">命中自选 3 只</span></div>
+      <h2>美国宣布「对等关税」，对华加征 34%</h2>
+      <div class="chain">
+        <div>政策　4月2日（美东）签署行政令，4月9日生效</div>
+        <div class="l2">行业　消费电子代工、跨境电商直接承压；苹果盘后 <span class="down num">−7.1%</span></div>
+        <div class="l3">你的自选　立讯精密 · 苹果 · 拼多多 <small>立讯对美出口链收入占比高</small></div>
+      </div>
+      <div class="judge">
+        <div class="main">
+          <div class="eyebrow">管家判断 · 置信度 高</div>
+          <p class="q" style="margin-top:6px">立讯精密未来 5 个交易日，相对电子板块<b>超额回撤超过 5%</b> 的风险显著升高。</p>
+          <dl class="kv"><dt>失效条件</dt><dd>关税豁免清单纳入消费电子整机及零部件</dd><dt>到期结算</dt><dd class="num">4月10日 收盘</dd><dt>同类战绩</dt><dd class="num">关税升级类异动 过去 6 次 · 命中 4 次</dd></dl>
+        </div>
+        <div class="vote"><span class="steel" style="font-size:13px">你怎么看？到期一起结算</span><span class="sp"></span><button class="btn xs primary">认同</button><button class="btn xs">不认同</button><button class="btn xs ghost">再观察</button></div>
+      </div>
+    </div>
+    <div class="h2">待验证</div>
+    <table class="db"><tr><th>异动</th><th>标的</th><th>管家判断</th><th>我</th><th>到期</th></tr>
+      <tr><td>融资余额 5 日连降</td><td>宁德时代</td><td><span class="tag peach">波动放大 · 中</span></td><td><span class="tag lav">认同</span></td><td class="num steel">明天</td></tr>
+      <tr><td>财报指引下调</td><td>英伟达</td><td><span class="tag rose">超额回撤 · 高</span></td><td><span class="tag">不认同</span></td><td class="num steel">3 天后</td></tr>
+    </table>
+  </main>
+  <aside class="rail">
+    <h3>证据</h3>
+    <div class="ev"><div class="eyebrow">政策原文</div><p class="quote">对所有进口商品加征 10% 基准关税，并对贸易逆差较大的经济体加征更高的对等关税，其中对中国为 34%。</p><p class="steel" style="font-size:12px">来源：白宫行政令摘要 · 4月2日</p></div>
+    <div class="ev"><div class="eyebrow">指标偏离</div><div class="big num down">−7.1%</div><p>苹果盘后跌幅，超过近一年 99% 的交易日</p></div>
+    <div class="ev"><div class="eyebrow">同类异动之后 5 日</div><div class="big num down">−6.3%</div><p>果链组合相对板块的超额收益中位数，样本 6 次</p></div>
+    <div class="ev steel" style="font-size:12px">结论与证据分开展示，你可以只看证据自己判断。</div>
+  </aside>
+</div></div>
+<div class="col"><div class="cap">手机 · 390</div>
+<div class="mb">
+  <div class="mdoc">
+    <div class="eyebrow">4月3日 周四 · 盘前 08:30</div>
+    <h1>今天有 1 条异动需要你看</h1>
+    <div class="callout">
+      <div class="row"><span class="tag rose"><span class="dot hi"></span>高</span><span class="tag">宏观政策</span><span class="sp steel" style="font-size:12px">命中 3 只</span></div>
+      <h2>美国宣布「对等关税」，对华加征 34%</h2>
+      <div class="chain">
+        <div>4月9日生效</div>
+        <div class="l2">消费电子代工承压，苹果盘后 <span class="down num">−7.1%</span></div>
+        <div class="l3">立讯精密 · 苹果 · 拼多多</div>
+      </div>
+      <div class="judge">
+        <div class="main">
+          <div class="eyebrow">管家判断 · 置信度 高</div>
+          <p class="q" style="margin-top:6px">立讯精密未来 5 个交易日，相对电子板块<b>超额回撤超过 5%</b> 的风险显著升高。</p>
+          <dl class="kv"><dt>失效条件</dt><dd>豁免清单纳入消费电子</dd><dt>到期结算</dt><dd class="num">4月10日 收盘</dd><dt>同类战绩</dt><dd class="num">过去 6 次 · 命中 4 次</dd></dl>
+        </div>
+        <div class="vote"><button class="btn xs primary" style="flex:1">认同</button><button class="btn xs" style="flex:1">不认同</button><button class="btn xs ghost">再观察</button></div>
+      </div>
+    </div>
+    <div class="h2" style="margin-top:22px">待验证 <span class="steel" style="font-weight:400;font-size:13px">2 条</span></div>
+    <table class="db"><tr><td>宁德时代<div class="steel" style="font-size:12px">融资余额 5 日连降</div></td><td><span class="tag peach">波动放大</span></td><td class="num steel" style="text-align:right">明天</td></tr></table>
+  </div>
+  <div class="tabbar"><a class="on">简报</a><a>自选</a><a>验证</a><a>调仓</a></div>
+</div></div>
+</div>

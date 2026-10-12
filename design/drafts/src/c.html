@@ -1,0 +1,76 @@
+<style>
+.pcc{flex-direction:column}
+.bar{display:flex;align-items:center;gap:14px;padding:14px 24px 0}
+.bar .brand{font-weight:600;display:flex;gap:8px;align-items:center}.bar .brand i{width:22px;height:22px;border-radius:6px;background:var(--ink);color:#fff;font:600 12px var(--sans);font-style:normal;display:flex;align-items:center;justify-content:center}
+.tm{margin:14px 24px 0;border:1px solid var(--hairline);border-radius:12px;padding:12px 16px 14px;background:var(--surface-soft)}
+.tm .days{display:grid;grid-template-columns:repeat(9,1fr);margin-top:10px;position:relative}
+.tm .days::before{content:"";position:absolute;left:5.5%;right:5.5%;top:6px;height:2px;background:var(--hairline-strong)}
+.day{text-align:center;font-size:12px;color:var(--steel);position:relative}
+.day i{display:block;width:14px;height:14px;border-radius:50%;background:var(--canvas);border:2px solid var(--hairline-strong);margin:0 auto 6px;position:relative}
+.day.past i{background:var(--hairline-strong)}.day.now i{background:var(--primary);border-color:var(--primary);box-shadow:0 0 0 4px var(--t-lav)}.day.now{color:var(--ink);font-weight:600}.day.due i{border-color:var(--up)}
+.score{display:flex;gap:0;margin:14px 24px 0;border:1px solid var(--hairline);border-radius:12px;overflow:hidden}
+.score>div{flex:1;padding:12px 18px;border-right:1px solid var(--hairline)}.score>div:last-child{border:0}
+.score .v{font-size:24px;font-weight:600;letter-spacing:-.5px}.score .v small{font-size:13px;font-weight:400;color:var(--steel);margin-left:6px}
+.board{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:16px;padding:16px 24px 0;flex:1;min-height:0}
+.lane>.lh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;margin-bottom:8px}.lane>.lh span.n{color:var(--stone);font-weight:400}
+.tk{display:flex;border:1px solid var(--hairline);border-radius:12px;background:var(--canvas);margin-bottom:10px;position:relative}
+.tk .m{flex:1;padding:12px 14px;min-width:0}.tk h4{font-size:14px;font-weight:600;margin:6px 0 4px}.tk p{font-size:13px;color:var(--slate)}
+.tk .stub{width:78px;flex:none;border-left:1px dashed var(--hairline-strong);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--steel);text-align:center}
+.tk .stub b{font-size:22px;font-weight:600;color:var(--ink);letter-spacing:-.5px}
+.tk.big .m{padding:16px 18px}.tk.big h4{font-size:17px;letter-spacing:-.1px}.tk.big .q{font-size:15px;color:var(--ink);margin:8px 0 10px}
+.stamp{font:700 15px var(--sans);letter-spacing:.12em;border:2px solid;border-radius:6px;padding:2px 6px;transform:rotate(-8deg)}
+.stamp.hit{color:var(--up);border-color:var(--up)}.stamp.miss{color:var(--steel);border-color:var(--stone)}.stamp.void{color:var(--stone);border-color:var(--hairline-strong);border-style:dashed}
+.who{display:flex;gap:10px;font-size:12px;color:var(--steel);margin-top:8px}.who b{color:var(--ink);font-weight:500}
+.mc{padding:14px 14px 0;flex:1;overflow:hidden}
+.mb .tm{margin:10px 0 0;padding:10px 8px 12px}.mb .tm .days{grid-template-columns:repeat(7,1fr)}.mb .day{font-size:11px}
+.mb .score{margin:10px 0 0}.mb .score>div{padding:9px 12px}.mb .score .v{font-size:20px}
+</style>
+<div class="hdr"><h1>方向 C · 判断卡与时间机器</h1><p>把「预判 → 验证」做成主角：每条异动是一张带存根的判断卡，到期盖章；顶部时间机器拖动日期就能回放。PC 端是看板（新异动 / 待验证 / 已结算），并排展示管家和我的战绩。主角是「对账」。</p></div>
+<div class="stage">
+<div class="col"><div class="cap">PC · 1300</div>
+<div class="pc pcc">
+  <div class="bar"><div class="brand"><i>异</i>异动管家</div><span class="tag">自选 8 只 · A股 港股 美股</span><span class="sp"></span><button class="btn xs ghost">自选</button><button class="btn xs ghost">调仓</button><button class="btn xs">授权证券账户</button></div>
+  <div class="tm"><div class="row"><span class="eyebrow">时间机器 · 2025 年 4 月关税冲击</span><span class="sp steel" style="font-size:12px">拖动日期，看管家当时说了什么、后来怎样</span></div>
+    <div class="days"><div class="day past"><i></i>3/31</div><div class="day past"><i></i>4/1</div><div class="day past"><i></i>4/2</div><div class="day now"><i></i>4/3 盘前</div><div class="day"><i></i>4/7</div><div class="day"><i></i>4/8</div><div class="day"><i></i>4/9</div><div class="day due"><i></i>4/10 结算</div><div class="day"><i></i>4/11</div></div></div>
+  <div class="score"><div><div class="eyebrow">管家 · 近 30 条判断</div><div class="v num">19<small>命中</small> 7<small>未中</small> 4<small>作废</small></div></div><div><div class="eyebrow">我 · 表态 12 条</div><div class="v num">7<small>命中</small> 5<small>未中</small></div></div><div><div class="eyebrow">分歧时谁对</div><div class="v num">管家 3 <small>：</small>我 1</div></div></div>
+  <div class="board">
+    <div class="lane"><div class="lh"><span class="dot hi"></span>新异动 <span class="n">1</span></div>
+      <div class="tk big"><div class="m">
+        <div class="row"><span class="tag rose">高</span><span class="tag">宏观政策</span><span class="tag">跨市场</span></div>
+        <h4>对等关税，对华加征 34%</h4>
+        <p>政策 → 消费电子代工 → 立讯精密 · 苹果 · 拼多多</p>
+        <p class="q">立讯精密未来 5 个交易日，相对电子板块超额回撤超过 5% 的风险显著升高。</p>
+        <p style="font-size:12px">失效条件：豁免清单纳入消费电子　·　同类过去 6 次命中 4 次</p>
+        <div class="row" style="margin-top:12px"><button class="btn xs primary">认同</button><button class="btn xs">不认同</button><button class="btn xs ghost">再观察</button><button class="btn xs ghost sp">看证据</button></div>
+      </div><div class="stub"><b class="num">5</b>个交易日后<br>4/10 结算</div></div>
+    </div>
+    <div class="lane"><div class="lh"><span class="dot pri"></span>待验证 <span class="n">2</span></div>
+      <div class="tk"><div class="m"><div class="row"><span class="tag peach">中</span><span class="tag">资金</span></div><h4>宁德时代 · 融资余额 5 日连降</h4><p>波动放大风险升高</p><div class="who"><span>管家 <b>会发生</b></span><span>我 <b>认同</b></span></div></div><div class="stub"><b class="num">1</b>天后</div></div>
+      <div class="tk"><div class="m"><div class="row"><span class="tag rose">高</span><span class="tag">公司事件</span></div><h4>英伟达 · 财报指引下调</h4><p>超额回撤超过 5%</p><div class="who"><span>管家 <b>会发生</b></span><span>我 <b>不认同</b></span></div></div><div class="stub"><b class="num">3</b>天后</div></div>
+    </div>
+    <div class="lane"><div class="lh"><span class="dot"></span>已结算 <span class="n">27</span></div>
+      <div class="tk"><div class="m"><h4 style="margin-top:0">腾讯控股 · 大股东减持公告</h4><p>实际超额 <span class="down num">−6.8%</span></p><div class="who"><span>管家 <b>✓</b></span><span>我 <b>✗</b></span></div></div><div class="stub"><span class="stamp hit">命中</span></div></div>
+      <div class="tk"><div class="m"><h4 style="margin-top:0">立讯精密 · 年报披露临近</h4><p>实际超额 <span class="up num">+1.2%</span></p><div class="who"><span>管家 <b>✗</b></span><span>我 <b>✓</b></span></div></div><div class="stub"><span class="stamp miss">未中</span></div></div>
+      <div class="tk"><div class="m"><h4 style="margin-top:0">小米集团 · 解禁窗口</h4><p>失效条件触发：放量收复 20 日线</p></div><div class="stub"><span class="stamp void">作废</span></div></div>
+    </div>
+  </div>
+</div></div>
+<div class="col"><div class="cap">手机 · 390</div>
+<div class="mb"><div class="mc">
+  <div class="row"><b style="font-size:17px">异动管家</b><span class="sp tag">自选 8 只</span></div>
+  <div class="tm"><div class="days"><div class="day past"><i></i>4/1</div><div class="day past"><i></i>4/2</div><div class="day now"><i></i>4/3</div><div class="day"><i></i>4/7</div><div class="day"><i></i>4/8</div><div class="day"><i></i>4/9</div><div class="day due"><i></i>4/10</div></div></div>
+  <div class="score"><div><div class="eyebrow">管家</div><div class="v num">19<small>中</small> 7<small>未中</small></div></div><div><div class="eyebrow">我</div><div class="v num">7<small>中</small> 5<small>未中</small></div></div></div>
+  <div class="lane" style="margin-top:14px"><div class="lh"><span class="dot hi"></span>新异动 <span class="n">1</span></div>
+    <div class="tk big" style="flex-direction:column"><div class="m" style="padding:14px">
+      <div class="row"><span class="tag rose">高</span><span class="tag">宏观政策</span><span class="sp steel num" style="font-size:12px">4/10 结算</span></div>
+      <h4>对等关税，对华加征 34%</h4>
+      <p>立讯精密 · 苹果 · 拼多多</p>
+      <p class="q">立讯精密未来 5 个交易日，相对电子板块超额回撤超过 5% 的风险显著升高。</p>
+      <div class="row"><button class="btn xs primary" style="flex:1">认同</button><button class="btn xs" style="flex:1">不认同</button><button class="btn xs ghost">证据</button></div>
+    </div></div></div>
+  <div class="lane"><div class="lh"><span class="dot pri"></span>待验证 <span class="n">2</span></div>
+    <div class="tk"><div class="m"><h4 style="margin-top:0">宁德时代 · 融资余额 5 日连降</h4><div class="who" style="margin-top:2px"><span>管家 <b>会发生</b></span><span>我 <b>认同</b></span></div></div><div class="stub"><b class="num">1</b>天后</div></div>
+    <div class="tk"><div class="m"><h4 style="margin-top:0">腾讯控股 · 大股东减持公告</h4><div class="who" style="margin-top:2px"><span>管家 <b>✓</b></span><span>我 <b>✗</b></span></div></div><div class="stub"><span class="stamp hit">命中</span></div></div>
+  </div>
+</div><div class="tabbar"><a class="on">判断</a><a>自选</a><a>战绩</a><a>调仓</a></div></div></div>
+</div>

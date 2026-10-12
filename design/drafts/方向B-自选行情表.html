@@ -1,0 +1,121 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>方向B-自选行情表</title><style>
+:root{--canvas:#fff;--surface:#f6f5f4;--surface-soft:#fafaf9;--hover:#efeeec;--hairline:#e5e3df;--hairline-soft:#ede9e4;--hairline-strong:#c8c4be;--ink:#1a1a1a;--charcoal:#37352f;--slate:#5d5b54;--steel:#787671;--stone:#a4a097;--primary:#5645d4;--link:#0075de;--up:#e03131;--down:#12893a;--warning:#dd5b00;
+--t-peach:#ffe8d4;--t-rose:#fde0ec;--t-mint:#d9f3e1;--t-lav:#e6e0f5;--t-sky:#dcecfa;--t-yellow:#fef7d6;--t-gray:#f0eeec;--o-peach:#793400;--o-rose:#a02e6d;--o-mint:#0f6b2a;--o-lav:#391c57;--o-sky:#0b4f8a;--o-yellow:#6b5300;--o-gray:#5d5b54;
+--sans:"Inter",-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;--mono:"SF Mono","JetBrains Mono",Menlo,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#e9e7e2;font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--ink);-webkit-font-smoothing:antialiased}
+.stage{display:flex;gap:36px;padding:28px 36px 36px;align-items:flex-start;width:1800px}
+.col>.cap{font-size:13px;color:var(--steel);margin-bottom:10px}
+.hdr{padding:24px 36px 0;width:1800px}.hdr h1{font-size:20px;font-weight:600;letter-spacing:-.2px}.hdr p{color:var(--slate);font-size:14px;margin-top:2px;max-width:1100px}
+.pc{width:1300px;height:840px;background:var(--canvas);border:1px solid var(--hairline);border-radius:12px;overflow:hidden;box-shadow:rgba(15,15,15,.08) 0 4px 12px;display:flex}
+.mb{width:390px;height:840px;background:var(--canvas);border:1px solid var(--hairline);border-radius:24px;overflow:hidden;box-shadow:rgba(15,15,15,.08) 0 4px 12px;display:flex;flex-direction:column;position:relative}
+.num{font-variant-numeric:tabular-nums}.up{color:var(--up)}.down{color:var(--down)}.steel{color:var(--steel)}.slate{color:var(--slate)}.stone{color:var(--stone)}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--steel)}
+.tag{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:500;line-height:20px;background:var(--t-gray);color:var(--o-gray)}
+.tag.peach{background:var(--t-peach);color:var(--o-peach)}.tag.rose{background:var(--t-rose);color:var(--o-rose)}.tag.mint{background:var(--t-mint);color:var(--o-mint)}.tag.lav{background:var(--t-lav);color:var(--o-lav)}.tag.sky{background:var(--t-sky);color:var(--o-sky)}.tag.yellow{background:var(--t-yellow);color:var(--o-yellow)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:8px;font:500 14px var(--sans);border:1px solid var(--hairline-strong);background:var(--canvas);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.dark{background:var(--ink);border-color:var(--ink);color:#fff}.btn.ghost{border-color:transparent;color:var(--slate)}.btn.xs{height:28px;padding:0 9px;font-size:13px;border-radius:6px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--stone);flex:none}.dot.hi{background:var(--up)}.dot.mid{background:var(--warning)}.dot.pri{background:var(--primary)}
+.side{width:216px;background:var(--surface);border-right:1px solid var(--hairline);padding:12px 8px;display:flex;flex-direction:column;gap:2px;flex:none}
+.side .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 12px;font-weight:600}.side .brand i{width:24px;height:24px;border-radius:6px;background:var(--ink);color:#fff;font:600 12px var(--sans);display:flex;align-items:center;justify-content:center;font-style:normal}
+.side a{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:6px;color:var(--slate);font-size:14px;text-decoration:none}.side a.on{background:var(--hover);color:var(--ink);font-weight:500}.side a b{margin-left:auto;background:var(--t-rose);color:var(--o-rose);border-radius:4px;padding:0 6px;font:500 12px var(--sans)}
+.side .sec{padding:14px 10px 4px}
+.tabbar{margin-top:auto;display:flex;border-top:1px solid var(--hairline);background:var(--canvas);flex:none}.tabbar a{flex:1;text-align:center;padding:10px 0 14px;font-size:12px;color:var(--steel);text-decoration:none}.tabbar a.on{color:var(--ink);font-weight:600}
+.row{display:flex;align-items:center;gap:8px}.sp{margin-left:auto}
+.card{border:1px solid var(--hairline);border-radius:12px;background:var(--canvas)}
+.note{padding:0 36px 28px;font-size:12px;color:var(--steel);width:1800px}
+</style></head><body>
+<style>
+.pcb{flex-direction:column}
+.top{display:flex;align-items:center;gap:20px;height:48px;padding:0 16px;border-bottom:1px solid var(--hairline);flex:none}
+.top .brand{font-weight:600;display:flex;gap:8px;align-items:center}.top .brand i{width:22px;height:22px;border-radius:6px;background:var(--ink);color:#fff;font:600 12px var(--sans);font-style:normal;display:flex;align-items:center;justify-content:center}
+.idx{display:flex;gap:18px;font-size:13px}.idx span b{font-weight:500;margin:0 5px}
+.panes{display:flex;flex:1;min-height:0}
+.wl{width:372px;border-right:1px solid var(--hairline);flex:none;display:flex;flex-direction:column}
+.seg{display:flex;gap:2px;padding:10px 12px 6px}.seg a{padding:3px 10px;border-radius:6px;font-size:13px;color:var(--slate)}.seg a.on{background:var(--hover);color:var(--ink);font-weight:500}
+.th{display:grid;grid-template-columns:1fr 72px 68px;padding:4px 14px;font-size:12px;color:var(--steel);border-bottom:1px solid var(--hairline)}
+.th span:not(:first-child),.st .p,.st .c{text-align:right}
+.st{display:grid;grid-template-columns:1fr 72px 68px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--hairline-soft)}
+.st.sel{background:var(--surface)}
+.st .n{font-size:14px;font-weight:500}.st .n small{display:block;font:400 11px var(--mono);color:var(--stone)}
+.st .p{font-size:14px}.st .c{justify-self:end;min-width:60px;text-align:center;border-radius:4px;color:#fff;font-size:13px;font-weight:500;padding:2px 0}
+.c.u{background:var(--up)}.c.d{background:var(--down)}
+.sig{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;color:var(--slate)}
+.midp{flex:1;min-width:0;padding:18px 22px;display:flex;flex-direction:column}
+.midp h2{font-size:22px;font-weight:600;letter-spacing:-.3px}
+.chart{border:1px solid var(--hairline);border-radius:12px;margin-top:14px;padding:12px 14px 6px}
+.feed{margin-top:16px}.fi{display:grid;grid-template-columns:52px 1fr auto;gap:10px;padding:10px 0;border-top:1px solid var(--hairline-soft);align-items:start;font-size:14px}
+.fi time{font:12px var(--mono);color:var(--steel);padding-top:2px}.fi p{color:var(--slate);font-size:13px;margin-top:2px}
+.right{width:340px;border-left:1px solid var(--hairline);padding:18px;flex:none;background:var(--surface-soft)}
+.jc{background:var(--canvas);border:1px solid var(--hairline);border-radius:12px;padding:14px}
+.jc .q{font-size:15px;margin:6px 0 10px}
+.meter{height:6px;border-radius:3px;background:var(--hairline);overflow:hidden;margin:6px 0 2px}.meter i{display:block;height:100%;background:var(--up)}
+.lvl{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;font-size:13px;color:var(--charcoal);align-items:center}
+.lock{margin-top:14px;border:1px dashed var(--hairline-strong);border-radius:12px;padding:14px;font-size:13px;color:var(--slate)}
+.mtop{padding:12px 14px 0}.mtop .idx{justify-content:space-between;font-size:12px;gap:6px}
+.mb .st{padding:9px 14px}.exp{grid-column:1/-1;margin-top:8px;border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;background:var(--canvas);font-size:14px}
+</style>
+<div class="hdr"><h1>方向 B · 自选行情表</h1><p>沿用自选股用户最熟的列表：行情是底，异动直接标在命中的那一行上，点开就是判断卡。PC 端三栏（自选 / 走势与异动 / 判断与调仓）。主角是「扫」，信息密度最高。</p></div>
+<div class="stage">
+<div class="col"><div class="cap">PC · 1300</div>
+<div class="pc pcb">
+  <div class="top"><div class="brand"><i>异</i>异动管家</div>
+    <div class="idx"><span>上证<b class="num up">3350.13</b><span class="up num">+0.05%</span></span><span>恒生<b class="num down">23202.5</b><span class="down num">−0.02%</span></span><span>纳指期货<b class="num down">18842</b><span class="down num">−3.4%</span></span></div>
+    <span class="sp tag">回放 2025-04-03 08:30</span><button class="btn xs">授权证券账户</button></div>
+  <div class="panes">
+    <div class="wl">
+      <div class="seg"><a class="on">全部 8</a><a>A股</a><a>港股</a><a>美股</a><a class="sp" style="color:var(--o-rose)">有异动 3</a></div>
+      <div class="th"><span>名称</span><span>最新</span><span>涨跌</span></div>
+      <div class="st sel"><div class="n">立讯精密<small>002475.SZ</small></div><div class="p num">40.89</div><div class="c d num">−0.6%</div><div class="sig"><span class="dot hi"></span><b style="color:var(--ink)">高</b> 对等关税 34% · 果链直接承压</div></div>
+      <div class="st"><div class="n">苹果<small>AAPL.US</small></div><div class="p num">223.89</div><div class="c d num">−7.1%</div><div class="sig"><span class="dot hi"></span><b style="color:var(--ink)">高</b> 盘后跌幅超近一年 99% 交易日</div></div>
+      <div class="st"><div class="n">拼多多<small>PDD.US</small></div><div class="p num">119.40</div><div class="c d num">−5.2%</div><div class="sig"><span class="dot mid"></span><b style="color:var(--ink)">中</b> 小额包裹免税取消</div></div>
+      <div class="st"><div class="n">贵州茅台<small>600519.SH</small></div><div class="p num">1568.9</div><div class="c u num">+0.3%</div></div>
+      <div class="st"><div class="n">宁德时代<small>300750.SZ</small></div><div class="p num">255.20</div><div class="c d num">−1.1%</div><div class="sig"><span class="dot pri"></span>待验证 · 明天到期</div></div>
+      <div class="st"><div class="n">腾讯控股<small>00700.HK</small></div><div class="p num">503.0</div><div class="c d num">−0.4%</div></div>
+      <div class="st"><div class="n">小米集团-W<small>01810.HK</small></div><div class="p num">49.15</div><div class="c d num">−1.8%</div></div>
+      <div class="st"><div class="n">英伟达<small>NVDA.US</small></div><div class="p num">110.42</div><div class="c d num">−5.6%</div></div>
+    </div>
+    <div class="midp">
+      <div class="row"><h2>立讯精密</h2><span class="steel" style="font:13px var(--mono)">002475.SZ</span><span class="sp tag rose"><span class="dot hi"></span>1 条高等级异动</span></div>
+      <div class="chart">
+        <div class="row steel" style="font-size:12px"><span>近 20 日 · 相对电子板块</span><span class="sp">▲ 异动　◆ 判断到期</span></div>
+        <svg viewBox="0 0 520 150" width="100%" height="170"><line x1="0" y1="60" x2="520" y2="60" stroke="#e5e3df"/><polyline fill="none" stroke="#1a1a1a" stroke-width="1.6" points="0,70 26,66 52,72 78,60 104,56 130,62 156,50 182,54 208,46 234,52 260,48 286,58 312,52 338,60 364,56 390,64 416,58 442,62 468,60"/><line x1="468" y1="10" x2="468" y2="140" stroke="#e03131" stroke-dasharray="3 3"/><polygon points="468,22 462,10 474,10" fill="#e03131"/><rect x="468" y="60" width="52" height="80" fill="#e03131" opacity=".06"/><text x="400" y="134" font-size="10" fill="#787671">判断窗口 5 日 →</text><rect x="514" y="54" width="8" height="8" transform="rotate(45 518 58)" fill="#5645d4"/></svg>
+      </div>
+      <div class="feed">
+        <div class="eyebrow">这只股票的异动</div>
+        <div class="fi"><time>04:15</time><div><b>宏观政策 · 对等关税，对华 34%</b><p>政策 → 消费电子代工 → 立讯精密。4月9日生效。</p></div><span class="tag rose">高</span></div>
+        <div class="fi"><time>昨 15:00</time><div><b>资金 · 融资余额 3 日连降</b><p>未达到提醒阈值，单独不推送，与上一条叠加后升级。</p></div><span class="tag">低</span></div>
+        <div class="fi"><time>3月28日</time><div><b>公司事件 · 年报披露临近</b><p>已结算：窗口内未出现超额回撤。<span class="tag mint" style="margin-left:6px">未中</span></p></div><span class="tag peach">中</span></div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="jc">
+        <div class="eyebrow">管家判断 · 4月10日 到期</div>
+        <p class="q">未来 5 个交易日，相对电子板块超额回撤超过 5% 的风险显著升高。</p>
+        <div class="lvl"><span class="steel">信号强度</span><div class="meter"><i style="width:88%"></i></div><span class="num">高</span><span class="steel">持仓权重</span><div class="meter"><i style="width:0;"></i></div><span class="stone">未授权</span><span class="steel">你的偏好</span><div class="meter"><i style="width:60%;background:var(--primary)"></i></div><span>盯紧</span></div>
+        <p class="steel" style="font-size:12px;margin:10px 0">失效条件：豁免清单纳入消费电子</p>
+        <div class="row"><button class="btn xs primary" style="flex:1">认同</button><button class="btn xs" style="flex:1">不认同</button><button class="btn xs ghost">再观察</button></div>
+      </div>
+      <div class="lock"><b style="color:var(--ink)">调仓方案</b><p style="margin:4px 0 10px">授权证券账户后，按你的真实持仓给出 2–3 个方案，并实时显示调整后的风险暴露。</p><button class="btn xs dark">授权后解锁</button></div>
+    </div>
+  </div>
+</div></div>
+<div class="col"><div class="cap">手机 · 390</div>
+<div class="mb">
+  <div class="mtop"><div class="row"><b style="font-size:17px">自选</b><span class="sp tag">回放 04-03 08:30</span></div>
+    <div class="idx" style="margin-top:10px"><span>上证 <span class="up num">+0.05%</span></span><span>恒生 <span class="down num">−0.02%</span></span><span>纳指期货 <span class="down num">−3.4%</span></span></div></div>
+  <div class="seg" style="padding:10px 10px 6px"><a class="on">全部</a><a>A股</a><a>港股</a><a>美股</a><a class="sp" style="color:var(--o-rose)">有异动 3</a></div>
+  <div class="st sel"><div class="n">立讯精密<small>002475.SZ</small></div><div class="p num">40.89</div><div class="c d num">−0.6%</div>
+    <div class="exp"><div class="row"><span class="tag rose"><span class="dot hi"></span>高</span><span class="tag">宏观政策</span><span class="sp steel num" style="font-size:12px">4月10日到期</span></div>
+      <p style="margin:8px 0 2px;font-weight:500">对等关税 34%，果链直接承压</p>
+      <p class="slate" style="font-size:13px">管家判断：5 个交易日内，相对电子板块超额回撤超过 5% 的风险显著升高。</p>
+      <div class="row" style="margin-top:10px"><button class="btn xs primary" style="flex:1">认同</button><button class="btn xs" style="flex:1">不认同</button><button class="btn xs ghost">证据</button></div></div></div>
+  <div class="st"><div class="n">苹果<small>AAPL.US</small></div><div class="p num">223.89</div><div class="c d num">−7.1%</div><div class="sig"><span class="dot hi"></span><b style="color:var(--ink)">高</b> 盘后跌幅超近一年 99% 交易日</div></div>
+  <div class="st"><div class="n">拼多多<small>PDD.US</small></div><div class="p num">119.40</div><div class="c d num">−5.2%</div><div class="sig"><span class="dot mid"></span><b style="color:var(--ink)">中</b> 小额包裹免税取消</div></div>
+  <div class="st"><div class="n">贵州茅台<small>600519.SH</small></div><div class="p num">1568.9</div><div class="c u num">+0.3%</div></div>
+  <div class="st"><div class="n">宁德时代<small>300750.SZ</small></div><div class="p num">255.20</div><div class="c d num">−1.1%</div><div class="sig"><span class="dot pri"></span>待验证 · 明天到期</div></div>
+  <div class="st"><div class="n">腾讯控股<small>00700.HK</small></div><div class="p num">503.0</div><div class="c d num">−0.4%</div></div>
+  <div class="tabbar"><a class="on">自选</a><a>异动</a><a>验证</a><a>调仓</a></div>
+</div></div>
+</div>
+<div class="note">初稿用于选方向：行情与战绩数值为占位，开发阶段用真实历史行情核对后替换。</div></body></html>
